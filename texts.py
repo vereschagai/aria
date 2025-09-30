@@ -451,6 +451,7 @@ gamer_account = '''
 *Всего баллов:* {balance}
 
 {accounts_table}
+*Получить аккаунты ➡️ \@goldalfsupp*
 '''
 
 gamer_change_address = '''
