@@ -1,0 +1,21 @@
+{
+  "name": "sandbox",
+  "version": "1.0.0",
+  "description": "Telegram bot for Sandbox",
+  "scripts": {
+    "start-bot": "python main.py",
+    "start-bot-python3": "python3 main.py",
+    "deploy-prod": "pm2 deploy deployment.config.js production update --force",
+    "start-prod": "pm2 deploy deployment.config.js production exec \"pm2 start deployment.config.js\"",
+    "stop-prod": "pm2 deploy deployment.config.js production exec \"pm2 stop deployment.config.js\"",
+    "logs-prod": "pm2 deploy deployment.config.js production exec \"pm2 logs sandbox-telegram-bot-production --lines 10000\"",
+    "error-logs-prod": "pm2 deploy deployment.config.js production exec \"pm2 logs sandbox-telegram-bot-production --err --lines 2000\"",
+    "deploy-qa": "pm2 deploy deployment.config.js qa update --force",
+    "start-qa": "pm2 deploy deployment.config.js qa exec \"pm2 start deployment.config.js\"",
+    "stop-qa": "pm2 deploy deployment.config.js qa exec \"pm2 stop deployment.config.js\"",
+    "logs-qa": "pm2 deploy deployment.config.js qa exec \"pm2 logs sandbox-telegram-bot-qa --lines 2000\"",
+    "error-logs-qa": "pm2 deploy deployment.config.js qa exec \"pm2 logs sandbox-telegram-bot-qa --err --lines 2000\""
+  },
+  "author": "",
+  "license": "ISC"
+}
