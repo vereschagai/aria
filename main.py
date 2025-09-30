@@ -509,7 +509,7 @@ async def gamer_account(message: types.Message, state: FSMContext):
 
         for account in accounts:
             balance += account["points"]
-            accounts_table += f'''{utils.escape('---------------------------')}\n
+            accounts_table += f'''\n{utils.escape('---------------------------')}\n
 Points: {account["points"]}
 
 Account:

@@ -449,7 +449,6 @@ gamer_account = '''
 *Адрес для выплат:* {address}
 
 *Всего баллов:* {balance}
-
 {accounts_table}
 *Получить аккаунты ➡️ \@goldalfsupp*
 '''
