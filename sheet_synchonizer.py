@@ -19,7 +19,13 @@ class GoogleSheetSynchonizer:
 
     def __make_db_account(self, account):
         proxy_data = account[3].split(':')
-        points = account[len(account) - 1] if len(account) > 5 else "0"
+        points = account[len(account) - 1] if len(account) > 5 else "0;0;0;0;0"
+        points_values = points.split(';')
+        points = int(points_values[0]) if len(points_values) > 0 and points_values[0].isdigit() else 0
+        rank = int(points_values[1]) if len(points_values) > 1 and points_values[1].isdigit() else 0
+        tower_points = int(points_values[2]) if len(points_values) > 2 and points_values[2].isdigit() else 0
+        tower_rank = int(points_values[3]) if len(points_values) > 3 and points_values[3].isdigit() else 0
+        tower_floor = int(points_values[4]) if len(points_values) > 4 and points_values[4].isdigit() else 0
         
         return {
             "profile": account[0],
@@ -32,6 +38,14 @@ class GoogleSheetSynchonizer:
                 "password": proxy_data[3]
             } if len(proxy_data) == 4 else {},
             "gamer": account[4].lstrip("@") if len(account) > 4 and account[4] != "" else None,
-            "points": int(points) if points.isdigit() else 0,
+            "points": {
+                "points": points,
+                "rank": rank,
+            },
+            "tower": {
+                "points": tower_points,
+                "rank": tower_rank,
+                "floor": tower_floor
+            }
         }
 

@@ -57,7 +57,7 @@ class OperatorController:
     async def __leaderboard(self, message: types.Message, state: FSMContext):
         await utils.add_message_history(self.db, message)
         
-        accounts = await self.db.get_accounts({ "points": { "$gt": 0 } })
+        accounts = await self.db.get_accounts({ "points.points": { "$gt": 0 } })
         leaderboard = {}
         for account in accounts:
             if "gamer" not in account or not account["gamer"]:
@@ -65,7 +65,7 @@ class OperatorController:
             if account["gamer"] not in leaderboard:
                 leaderboard[account["gamer"]] = 0
 
-            leaderboard[account["gamer"]] += account["points"]
+            leaderboard[account["gamer"]] += account["points"]["points"]
         
         data = sorted(leaderboard.items(), key=lambda x: x[1], reverse=True)
         await self.__print_leaderboard(message.from_user.id, data)

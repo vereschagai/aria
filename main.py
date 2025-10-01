@@ -503,14 +503,19 @@ async def gamer_account(message: types.Message, state: FSMContext):
     address = gamer["address"] if has_address else "*добавь адрес кошелька для выплат*"
     markup = markups.backaddresschange if has_address else markups.backaddressadd
 
-    accounts = await db.get_accounts({ "gamer": message.from_user.username }, sort = [( 'points', -1 )])
+    accounts = await db.get_accounts({ "gamer": message.from_user.username }, sort = [( 'points.points', -1 )])
     if len(accounts) > 0:
         balance = 0
 
         for account in accounts:
             balance += account["points"]
             accounts_table += f'''\n{utils.escape('---------------------------')}\n
-Points: {account["points"]}
+Points: {account["points"]["points"]}
+Rank: {account["points"]["rank"]}
+
+Tower Points: {account["tower"]["points"]}
+Tower Rank: {account["tower"]["rank"]}
+Tower Floor: {account["tower"]["floor"]}
 
 Account:
     Login: `{utils.escape(account["login"])}`
