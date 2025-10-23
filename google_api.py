@@ -41,7 +41,7 @@ class GoogleSheets:
 
 
     def get_accounts(self):
-        return self.__get_sheet_values(self.aria_gameplay_sheet_id, self.__build_accounts_range('A2', 'AAAA'))
+        return self.__get_sheet_values(self.aria_gameplay_sheet_id, self.__build_accounts_range('A2', 'AQ'))
 
     def put_accounts_raw(self, range, data):
         return self.__update_sheet_values(self.aria_gameplay_sheet_id, range, data)
