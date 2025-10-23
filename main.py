@@ -513,9 +513,10 @@ async def gamer_account(message: types.Message, state: FSMContext):
 Points: {account["points"]["points"]}
 Rank: {account["points"]["rank"]}
 
-Tower Points: {account["tower"]["points"]}
-Tower Rank: {account["tower"]["rank"]}
-Tower Floor: {account["tower"]["floor"]}
+Tower:
+    Points: {account["tower"]["points"]}
+    Rank: {account["tower"]["rank"]}
+    Floor: {account["tower"]["floor"]}
 
 Account:
     Login: `{utils.escape(account["login"])}`
