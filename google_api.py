@@ -3,8 +3,6 @@ import os
 
 from apiclient import discovery
 from google.oauth2 import service_account
-from googleapiclient.http import MediaFileUpload
-
 from tenacity import retry, wait_exponential
 
 class GoogleSheets:
@@ -34,15 +32,5 @@ class GoogleSheets:
         result = self.sheets.values().get(spreadsheetId=spreadsheet_id, range=range_name).execute()
         return result.get('values', [])
 
-    @retry(wait=wait_exponential(multiplier=1, min=1, max=60))
-    def __update_sheet_values(self, spreadsheet_id, range_name, values):
-        self.sheets.values().update(spreadsheetId=spreadsheet_id, body={ 'values': values }, range=range_name, valueInputOption='USER_ENTERED').execute()
-
-
-
     def get_accounts(self):
         return self.__get_sheet_values(self.aria_gameplay_sheet_id, self.__build_accounts_range('A2', 'AQ'))
-
-    def put_accounts_raw(self, range, data):
-        return self.__update_sheet_values(self.aria_gameplay_sheet_id, range, data)
-

@@ -1,13 +1,5 @@
 import os
 import asyncio
-import aiocron
-from datetime import datetime, timedelta
-from credit_card_checker import CreditCardChecker
-from bson.objectid import ObjectId
-from threading import Timer
-import base64
-import uuid
-from tenacity import retry, wait_exponential
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.dispatcher import FSMContext
@@ -38,7 +30,6 @@ superadmins = [
     {
         'id': 208809955,
         'name': 'ivanvereschaga',
-        'stat_marker': 'VIP'
     }
 ]
 
@@ -69,6 +60,8 @@ operator_controller = OperatorController(dp, bot, db, api, synchonizer)
 
 
 async def init():
+    await db.ensure_indexes()
+
     for superadmin in superadmins:
         if not await db.is_superadmin(superadmin['id']):
             await db.add_superadmin({ "id": superadmin['id'], "username": superadmin['name'] })
@@ -78,13 +71,6 @@ async def init():
         if not db_config or field not in db_config:
             await db.update_config(field, config[field])
 
-    # db_config = await db.get_config()
-
-    # if await db.count_gamers({}) == 0:
-    #     gamers = api.get_existent_gamers()
-    #     for gamer in gamers:
-    #         if "id" in gamer and not await db.is_gamer({ "id": gamer["id"] }) or "username" in gamer and not await db.is_gamer({ "username": gamer["username"] }):
-    #             await db.add_gamer(gamer["id"], gamer["username"], gamer["referral"], gamer["address"])
 
 
 asyncio.run_coroutine_threadsafe(init(), dp.loop)
@@ -406,8 +392,6 @@ async def admin_remove_confirmed(message: types.Message, state: FSMContext):
 
 
 @dp.message_handler(Text(equals=buttons.referral), state=TelegramState.start)
-# @dp.message_handler(Text(equals=buttons.referral), state=TelegramState.admin_start)
-# @dp.message_handler(Text(equals=buttons.referral), state=TelegramState.superadmin_start)
 async def gamer_referral_link(message: types.Message, state: FSMContext):
     me = await bot.get_me()
     referral_link = f'https://t.me/{me.username}?start={message.from_user.id}'
