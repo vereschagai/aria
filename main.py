@@ -100,13 +100,9 @@ asyncio.run_coroutine_threadsafe(init(), dp.loop)
 @dp.message_handler(CommandStart(), state=TelegramState.operator_start)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.superadmin_add_admin)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.superadmin_feed)
-@dp.message_handler(Text(equals=buttons.back), state=TelegramState.admin_add_validator)
-@dp.message_handler(Text(equals=buttons.back), state=TelegramState.admin_add_payer)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.admin_add_operator)
 @dp.message_handler(Text(equals=buttons.cancel), state=TelegramState.superadmin_remove_admin_confirm)
-@dp.message_handler(Text(equals=buttons.cancel), state=TelegramState.admin_remove_validator_confirm)
 @dp.message_handler(Text(equals=buttons.cancel), state=TelegramState.admin_remove_operator_confirm)
-@dp.message_handler(Text(equals=buttons.cancel), state=TelegramState.admin_remove_payer_confirm)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.account)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.referral)
 async def start(message: types.Message, state: FSMContext):
@@ -261,10 +257,6 @@ async def superadmin_feed_send(message: types.Message):
     await utils.safe_wrap(lambda: message.answer(texts.superadmin_feed_sent, reply_markup=markups.superadmin_start))
 
 @dp.message_handler(Text(equals=buttons.superadmin_add_admin), state=TelegramState.superadmin_start)
-# @dp.message_handler(Text(equals=buttons.admin_add_validator), state=TelegramState.superadmin_start)
-# @dp.message_handler(Text(equals=buttons.admin_add_validator), state=TelegramState.admin_start)
-@dp.message_handler(Text(equals=buttons.admin_add_payer), state=TelegramState.superadmin_start)
-@dp.message_handler(Text(equals=buttons.admin_add_payer), state=TelegramState.admin_start)
 @dp.message_handler(Text(equals=buttons.admin_add_operator), state=TelegramState.superadmin_start)
 @dp.message_handler(Text(equals=buttons.admin_add_operator), state=TelegramState.admin_start)
 async def admin_add(message: types.Message):
@@ -272,22 +264,12 @@ async def admin_add(message: types.Message):
         await TelegramState.superadmin_add_admin.set()
 
         await utils.safe_wrap(lambda: message.answer(texts.superadmin_add, reply_markup=markups.back))
-    # elif message.text == buttons.admin_add_validator:
-    #     await TelegramState.admin_add_validator.set()
-
-    #     await utils.safe_wrap(lambda: message.answer(texts.admin_add.format(contragent="валидатор"), reply_markup=markups.back)
-    elif message.text == buttons.admin_add_payer:
-        await TelegramState.admin_add_payer.set()
-
-        await utils.safe_wrap(lambda: message.answer(texts.admin_add.format(contragent="кассир"), reply_markup=markups.back))
     elif message.text == buttons.admin_add_operator:
         await TelegramState.admin_add_operator.set()
 
         await utils.safe_wrap(lambda: message.answer(texts.admin_add.format(contragent="оператор"), reply_markup=markups.back))
 
 @dp.message_handler(content_types=types.ContentType.CONTACT, state=TelegramState.superadmin_add_admin)
-@dp.message_handler(content_types=types.ContentType.CONTACT, state=TelegramState.admin_add_validator)
-@dp.message_handler(content_types=types.ContentType.CONTACT, state=TelegramState.admin_add_payer)
 @dp.message_handler(content_types=types.ContentType.CONTACT, state=TelegramState.admin_add_operator)
 async def admin_added(message : types.Message, state: FSMContext):
     if not message.contact.user_id:
@@ -304,10 +286,6 @@ async def admin_added(message : types.Message, state: FSMContext):
         else:
             await utils.safe_wrap(lambda: message.answer(texts.superadmin_add_exists.format(name=message.contact.full_name), reply_markup=markups.superadmin_start))
     else:
-        isValidator = await state.get_state() == "TelegramState:admin_add_validator"
-        isOperator = await state.get_state() == "TelegramState:admin_add_operator"
-        contragent = "Валидатор" if isValidator else "Оператор" if isOperator else "Кассир"
-
         isSuperadmin = await db.is_superadmin(message.from_user.id)
 
         if isSuperadmin:
@@ -317,50 +295,31 @@ async def admin_added(message : types.Message, state: FSMContext):
 
         markup = markups.superadmin_start if isSuperadmin else markups.admin_start
 
-        exists = await db.is_validator(message.contact.user_id) if isValidator else await db.is_operator(message.contact.user_id) if isOperator else await db.is_payer(message.contact.user_id)
-        if not exists:
-            if isValidator:
-                await db.add_validator(message.contact)
-            elif isOperator:
-                await db.add_operator(message.contact)
-            else:
-                await db.add_payer(message.contact)
-
-            await utils.safe_wrap(lambda: message.answer(texts.admin_added.format(contragent=contragent, name=message.contact.full_name), reply_markup=markup))
+        if not await db.is_operator(message.contact.user_id):
+            await db.add_operator(message.contact)
+            await utils.safe_wrap(lambda: message.answer(texts.admin_added.format(contragent="Оператор", name=message.contact.full_name), reply_markup=markup))
         else:
-            await utils.safe_wrap(lambda: message.answer(texts.admin_add_exists.format(contragent=contragent, name=message.contact.full_name), reply_markup=markup))
+            await utils.safe_wrap(lambda: message.answer(texts.admin_add_exists.format(contragent="Оператор", name=message.contact.full_name), reply_markup=markup))
 
 @dp.message_handler(content_types=types.ContentType.ANY, state=TelegramState.superadmin_add_admin)
-@dp.message_handler(content_types=types.ContentType.ANY, state=TelegramState.admin_add_validator)
 @dp.message_handler(content_types=types.ContentType.ANY, state=TelegramState.admin_add_operator)
-@dp.message_handler(content_types=types.ContentType.ANY, state=TelegramState.admin_add_payer)
 async def admin_added_error(message: types.Message, state: FSMContext):
     if await state.get_state() == "TelegramState:superadmin_add_admin":
         await utils.safe_wrap(lambda: message.answer(texts.superadmin_added_error))
     else:
-        isValidator = await state.get_state() == "TelegramState:admin_add_validator"
-        isOperator = await state.get_state() == "TelegramState:admin_add_operator"
-
-        contragent = "валидатор" if isValidator else "оператор" if isOperator else "кассир"
-        await utils.safe_wrap(lambda: message.answer(texts.admin_added_error.format(contragent=contragent)))
+        await utils.safe_wrap(lambda: message.answer(texts.admin_added_error.format(contragent="оператор")))
 
 
 @dp.message_handler(Text(equals=buttons.superadmin_remove_admin), state=TelegramState.superadmin_start)
-# @dp.message_handler(Text(equals=buttons.admin_remove_validator), state=TelegramState.admin_start)
-# @dp.message_handler(Text(equals=buttons.admin_remove_validator), state=TelegramState.superadmin_start)
-@dp.message_handler(Text(equals=buttons.admin_remove_payer), state=TelegramState.admin_start)
-@dp.message_handler(Text(equals=buttons.admin_remove_payer), state=TelegramState.superadmin_start)
 @dp.message_handler(Text(equals=buttons.admin_remove_operator), state=TelegramState.admin_start)
 @dp.message_handler(Text(equals=buttons.admin_remove_operator), state=TelegramState.superadmin_start)
 async def admin_remove(message: types.Message):
     isSuperadmin = message.text == buttons.superadmin_remove_admin
-    # isValidator = message.text == buttons.admin_remove_validator
-    isOperator = message.text == buttons.admin_remove_operator
 
-    count = await db.count_admins({}) if isSuperadmin else await db.count_operators({}) if isOperator else await db.count_payers({})
+    count = await db.count_admins({}) if isSuperadmin else await db.count_operators({})
     if count > 0:
         markup = types.InlineKeyboardMarkup(row_width=1)
-        entities = await db.get_admins() if isSuperadmin else await db.get_operators() if isOperator else await db.get_payers({})
+        entities = await db.get_admins() if isSuperadmin else await db.get_operators()
 
         for entity in entities:
             label = (entity["username"] + " " if "username" in entity else "") + entity["phone"]
@@ -370,23 +329,18 @@ async def admin_remove(message: types.Message):
 
         if isSuperadmin:
             await TelegramState.superadmin_remove_admin.set()
-        elif isOperator:
-            await TelegramState.admin_remove_operator.set()
         else:
-            await TelegramState.admin_remove_payer.set()
+            await TelegramState.admin_remove_operator.set()
 
         await utils.safe_wrap(lambda: message.answer(texts.admin_remove, reply_markup=markup))
     else:
-        contragent = "оператор" if isOperator else "кассир"
-        text = texts.superadmin_remove_empty if isSuperadmin else texts.admin_remove_empty.format(contragent=contragent)
+        text = texts.superadmin_remove_empty if isSuperadmin else texts.admin_remove_empty.format(contragent="оператор")
         markup = markups.superadmin_start if await db.is_superadmin(message.from_user.id) else markups.admin_start
 
         await utils.safe_wrap(lambda: message.answer(text, reply_markup=markup))
 
 @dp.callback_query_handler(state=TelegramState.superadmin_remove_admin)
-@dp.callback_query_handler(state=TelegramState.admin_remove_validator)
 @dp.callback_query_handler(state=TelegramState.admin_remove_operator)
-@dp.callback_query_handler(state=TelegramState.admin_remove_payer)
 async def admin_remove_confirm(callback_query: types.CallbackQuery, state: FSMContext):
     isSuperadmin = await state.get_state() == "TelegramState:superadmin_remove_admin"
 
@@ -403,21 +357,14 @@ async def admin_remove_confirm(callback_query: types.CallbackQuery, state: FSMCo
 
         return
 
-    isValidator = await state.get_state() == "TelegramState:admin_remove_validator"
-    isOperator = await state.get_state() == "TelegramState:admin_remove_operator"
-
     search = { "id": int(callback_query.data) }
-    entity = await db.get_admin(search) if isSuperadmin else await db.get_validator(search) if isValidator else await db.get_operator(search) if isOperator else await db.get_payer(search)
+    entity = await db.get_admin(search) if isSuperadmin else await db.get_operator(search)
 
     if entity != None:
         if isSuperadmin:
             await TelegramState.superadmin_remove_admin_confirm.set()
-        elif isValidator:
-            await TelegramState.admin_remove_validator_confirm.set()
-        elif isOperator:
-            await TelegramState.admin_remove_operator_confirm.set()
         else:
-            await TelegramState.admin_remove_payer_confirm.set()
+            await TelegramState.admin_remove_operator_confirm.set()
 
         await state.set_data(search)
 
@@ -425,24 +372,19 @@ async def admin_remove_confirm(callback_query: types.CallbackQuery, state: FSMCo
 
         name = entity["username"] if "username" in entity else entity["phone"]
 
-        contragent = "валидатор" if isValidator else "оператор" if isOperator else "кассир"
-        await utils.safe_wrap(lambda: bot.send_message(callback_query.from_user.id, texts.superadmin_remove_confirm.format(username=name) if isSuperadmin else texts.admin_remove_confirm.format(contragent=contragent, username=name), reply_markup=markups.confirm))
+        await utils.safe_wrap(lambda: bot.send_message(callback_query.from_user.id, texts.superadmin_remove_confirm.format(username=name) if isSuperadmin else texts.admin_remove_confirm.format(contragent="оператор", username=name), reply_markup=markups.confirm))
     else:
         await utils.safe_wrap(lambda: bot.send_message(callback_query.from_user.id, texts.admin_remove_confirm_error))
 
 @dp.message_handler(Text(equals=buttons.confirm), state=TelegramState.superadmin_remove_admin_confirm)
-@dp.message_handler(Text(equals=buttons.confirm), state=TelegramState.admin_remove_validator_confirm)
 @dp.message_handler(Text(equals=buttons.confirm), state=TelegramState.admin_remove_operator_confirm)
-@dp.message_handler(Text(equals=buttons.confirm), state=TelegramState.admin_remove_payer_confirm)
 async def admin_remove_confirmed(message: types.Message, state: FSMContext):
     isSuperadmin = await db.is_superadmin(message.from_user.id)
 
     isAdmin = await state.get_state() == "TelegramState:superadmin_remove_admin_confirm"
-    isValidator = await state.get_state() == "TelegramState:admin_remove_validator_confirm"
-    isOperator = await state.get_state() == "TelegramState:admin_remove_operator_confirm"
 
     search = await state.get_data()
-    entity = await db.get_admin(search) if isAdmin else await db.get_validator(search) if isValidator else await db.get_operator(search) if isOperator else await db.get_payer(search)
+    entity = await db.get_admin(search) if isAdmin else await db.get_operator(search)
 
     if isSuperadmin:
         await TelegramState.superadmin_start.set()
@@ -451,19 +393,14 @@ async def admin_remove_confirmed(message: types.Message, state: FSMContext):
 
     if isAdmin:
         await db.remove_admin(search)
-    elif isValidator:
-        await db.remove_validator(search)
-    elif isOperator:
-        await db.remove_operator(search)
     else:
-        await db.remove_payer(search)
+        await db.remove_operator(search)
 
     contragent_state = dp.current_state(chat=entity["id"], user=entity["id"])
     await contragent_state.finish()
 
     name = entity["username"] if "username" in entity else entity["phone"]
-    contragent = "Валидатор" if isValidator else "Оператор" if isOperator else "Кассир"
-    text = texts.superadmin_removed.format(username=name) if isAdmin else texts.admin_removed.format(contragent=contragent, username=name)
+    text = texts.superadmin_removed.format(username=name) if isAdmin else texts.admin_removed.format(contragent="Оператор", username=name)
     markup = markups.superadmin_start if isSuperadmin else markups.admin_start
     await utils.safe_wrap(lambda: message.answer(text, reply_markup=markup))
 

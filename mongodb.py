@@ -71,24 +71,6 @@ class MongoDb:
         return await self.db.operators.delete_one(search)
 
 
-    async def get_payers(self, search):
-        return await self.db.payers.find(search).to_list(None)
-
-    async def count_payers(self, search):
-        return await self.db.payers.count_documents(search)
-
-    async def is_payer(self, user_id):
-        return await self.get_payer({ "id": user_id }) != None
-
-    async def get_payer(self, search):
-        return await self.db.payers.find_one(search)
-
-    async def add_payer(self, contact):
-        return await self.db.payers.insert_one({ "id": contact.user_id, "phone": contact.phone_number })
-
-    async def remove_payer(self, search):
-        return await self.db.payers.delete_one(search)
-
 
     async def is_gamer(self, search):
         return await self.db.gamers.find_one(search) != None
@@ -118,94 +100,6 @@ class MongoDb:
         return await self.db.gamers.update_one({ "id": user_id }, { "$set": { "address": address } })
 
 
-    async def add_gamer_balance(self, user_id, value):
-        await self.db.gamers.update_one({ "id": user_id }, { "$inc": { 'balance': value } }, upsert=True)
-
-    async def add_pending_balance(self, user_id, value):
-        await self.db.gamers.update_one({ "id": user_id }, { "$inc": { 'pending_balance': value } }, upsert=True)
-
-    async def remove_pending_balance(self, user_id, value):
-        await self.db.gamers.update_one({ "id": user_id }, { "$inc": { 'pending_balance': -value } }, upsert=True)
-    
-    async def get_gamers_challenge_special_leaderboard(self):
-        return await self.db.gamers.find({ "$or": [ { "balance.8": { "$gt": 0 } }, { "balance.9": { "$gt": 0 } } ] }).to_list(None)
-
-
-
-    async def get_balance(self, is_validator, user_id):
-        document = "validator_balance" if is_validator else "balance"
-        return await self.db[document].find_one({ "id": user_id })
-
-    async def add_balance(self, is_validator, user_id, amount):
-        document = "validator_balance" if is_validator else "balance"
-        field = "amount" if is_validator else "account"
-        return await self.db[document].update_one({ "id": user_id }, { "$set": { "id": user_id }, "$inc": { field: amount } }, upsert=True)
-
-    async def add_balance_withdrawing(self, is_validator, user_id, amount):
-        document = "validator_balance" if is_validator else "balance"
-        return await self.db[document].update_one({ "id": user_id }, { "$set": { "id": user_id }, "$inc": { "withdrawing": amount } }, upsert=True)
-
-    async def normalize_balance(self, is_validator, user_id, amount):
-        document = "validator_balance" if is_validator else "balance"
-        return await self.db[document].update_one({ "id": user_id }, { "$inc": { "withdrawal": amount, "withdrawing": -amount } })
-
-    async def add_user_initial_balance(self, search, amount):
-        return await self.db.balance.update_one(search, { "$set": search, "$inc": { "account": amount, "withdrawal": amount } }, upsert=True)
-
-    async def add_user_initial_referral_balance(self, search, amount):
-        return await self.db.balance.update_one(search, { "$set": search, "$inc": { "referral": amount, "withdrawal": amount } }, upsert=True)
-
-
-    async def count_cards(self, search):
-        return await self.db.withdrawal_card.count_documents(search)
-
-    async def get_cards(self, search):
-        return await self.db.withdrawal_card.find(search).to_list(None)
-
-    async def add_card(self, user_id, card):
-        return await self.db.withdrawal_card.insert_one({ "id": user_id, "card": card })
-
-
-    async def add_withdrawal_request(self, user_id, amount, card):
-        return await self.db.withdrawal_request.insert_one({ "id": user_id, "amount": amount, "card": card, "status": "pending", "date": datetime.now() })
-
-    async def get_latest_withdrawal_request(self, user_id):
-        return await self.db.withdrawal_request.find_one({ "id": user_id }, sort=[( '_id', DESCENDING )])
-
-    async def count_payer_withdraw_requests(self):
-        return await self.db.withdrawal_request.count_documents({ "status": "pending" })
-
-    async def get_payer_withdraw_requests(self):
-        return await self.db.withdrawal_request.find({ "status": "pending" }).to_list(None)
-
-    async def get_payer_withdraw_request(self, search):
-        return await self.db.withdrawal_request.find_one(search)
-
-    async def payer_mark_withdraw_done(self, search):
-        return await self.db.withdrawal_request.update_one(search, { "$set": { "status": "done" } })
-
-
-    async def get_validators(self, search):
-        return await self.db.validators.find(search).to_list(None)
-
-    async def count_validators(self, search):
-        return await self.db.validators.count_documents(search)
-
-    async def is_validator(self, user_id):
-        return await self.get_validator({ "id": user_id }) != None
-
-    async def get_validator(self, search):
-        return await self.db.validators.find_one(search)
-
-    async def add_validator(self, contact):
-        return await self.db.validators.insert_one({ "id": contact.user_id, "phone": contact.phone_number, "status": "idle" })
-
-    async def remove_validator(self, search):
-        return await self.db.validators.delete_one(search)
-
-    async def set_validator_status(self, user_id, status):
-        return await self.db.validators.update_one({ "id": user_id }, { "$set": { "status": status } })
-    
     async def get_redirects(self, search = {}):
         return await self.db.redirects.find(search).to_list(None)
 

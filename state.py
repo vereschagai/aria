@@ -11,26 +11,9 @@ class TelegramState(StatesGroup):
     superadmin_restart_tasks = State()
 
     admin_start = State()
-    admin_add_validator = State()
-    admin_add_payer = State()
     admin_add_operator = State()
-    admin_remove_validator = State()
-    admin_remove_payer = State()
     admin_remove_operator = State()
-    admin_remove_validator_confirm = State()
-    admin_remove_payer_confirm = State()
     admin_remove_operator_confirm = State()
-
-    validator_start = State()
-    validator_balance = State()
-    validator_withdrawal = State()
-    validator_withdrawal_card = State()
-    validator_withdrawal_confirm = State()
-
-    payer_start = State()
-    payer_withdraw_list = State()
-    payer_process = State()
-    payer_done = State()
 
     welcome = State()
     terms = State()

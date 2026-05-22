@@ -4,9 +4,6 @@ superadmin_remove_admin = "Удалить админа"
 configuration = "⚙️ Конфигурация"
 feed = "Связь с общественностью"
 
-admin_add_payer = "Добавить кассира"
-admin_remove_payer = "Удалить кассира"
-
 admin_add_operator = "Добавить оператора"
 admin_remove_operator = "Удалить оператора"
 
@@ -43,9 +40,6 @@ withdraw_all = "Вывести все"
 referral = "💸 Реферальная программа"
 
 start = "🚀 Запуск"
-
-payer_withdraw_list = "💳 Список запросов"
-payer_done = "✅ Отправлено"
 
 check_ip = '🧐 Проверить'
 

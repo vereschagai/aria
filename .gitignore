@@ -152,6 +152,7 @@ cython_debug/
 #.idea/
 
 client_secret.json
+deployment.config.js
 socials/
 cctools/
 statistic/

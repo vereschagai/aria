@@ -4,21 +4,14 @@ import buttons
 
 superadmin_start = ReplyKeyboardMarkup(resize_keyboard=True, selective=True, one_time_keyboard=False)
 superadmin_start.add(buttons.superadmin_add_admin, buttons.superadmin_remove_admin)
-# superadmin_start.add(buttons.admin_add_payer, buttons.admin_remove_payer)
 superadmin_start.add(buttons.admin_add_operator, buttons.admin_remove_operator)
-# superadmin_start.add(buttons.referral, buttons.statistic)
-# superadmin_start.add(buttons.admin_restart_failed_tasks, buttons.admin_stop_bot)
 superadmin_start.add(buttons.leaderboard)
 superadmin_start.add(buttons.admin_grab_accounts)
 superadmin_start.add(buttons.configuration, buttons.feed)
-# superadmin_start.add(buttons.refresh_accounts)
 
 admin_start = ReplyKeyboardMarkup(resize_keyboard=True, selective=True, one_time_keyboard=False)
-admin_start.add(buttons.admin_add_payer, buttons.admin_remove_payer)
 admin_start.add(buttons.admin_add_operator, buttons.admin_remove_operator)
 admin_start.add(buttons.referral, buttons.statistic)
-# admin_start.add(buttons.refresh_accounts)
-# superadmin_start.add(buttons.admin_add_validator, buttons.admin_remove_validator)
 
 start = ReplyKeyboardMarkup(resize_keyboard=True, selective=True, one_time_keyboard=False)
 # start.add(buttons.play, buttons.software)
@@ -32,12 +25,6 @@ withdrawal.add(buttons.back, buttons.withdraw_all)
 
 confirm = ReplyKeyboardMarkup(resize_keyboard=True, selective=True, one_time_keyboard=False)
 confirm.add(buttons.confirm, buttons.cancel)
-
-payer_start = ReplyKeyboardMarkup(resize_keyboard=True, selective=True, one_time_keyboard=False)
-payer_start.add(buttons.payer_withdraw_list)
-
-payer_process = ReplyKeyboardMarkup(resize_keyboard=True, selective=True, one_time_keyboard=False)
-payer_process.add(buttons.back, buttons.payer_done)
 
 back = ReplyKeyboardMarkup(resize_keyboard=True, selective=True, one_time_keyboard=False)
 back.add(buttons.back)
