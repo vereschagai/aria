@@ -14,7 +14,9 @@
     "start-qa": "pm2 deploy deployment.config.js qa exec \"pm2 start deployment.config.js\"",
     "stop-qa": "pm2 deploy deployment.config.js qa exec \"pm2 stop deployment.config.js\"",
     "logs-qa": "pm2 deploy deployment.config.js qa exec \"pm2 logs aria-telegram-bot-qa --lines 2000\"",
-    "error-logs-qa": "pm2 deploy deployment.config.js qa exec \"pm2 logs aria-telegram-bot-qa --err --lines 2000\""
+    "error-logs-qa": "pm2 deploy deployment.config.js qa exec \"pm2 logs aria-telegram-bot-qa --err --lines 2000\"",
+    "rollback-prod": "pm2 deploy deployment.config.js production exec \"git reset --hard HEAD~1 && pip3 install -r requirements.txt && pm2 reload deployment.config.js --env production --force\"",
+    "rollback-qa": "pm2 deploy deployment.config.js qa exec \"git reset --hard HEAD~1 && pip3 install -r requirements.txt && pm2 reload deployment.config.js --env qa --force\""
   },
   "author": "",
   "license": "ISC"

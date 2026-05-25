@@ -22,3 +22,10 @@ class TelegramState(StatesGroup):
 
     operator_start = State()
     leaderboard = State()
+
+    support_start = State()
+    support_remove = State()
+    support_remove_confirm = State()
+    admin_add_support = State()
+
+    gamer_release_account = State()

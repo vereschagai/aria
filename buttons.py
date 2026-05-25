@@ -20,3 +20,15 @@ referral = "💸 Реферальная программа"
 
 add_address = '💵 Добавить кошелек'
 change_address = '💵 Сменить кошелек'
+
+pickup_account = '🎮 Взять аккаунт'
+release_account = '🔓 Освободить аккаунт'
+
+admin_add_support = "Добавить поддержку"
+admin_remove_support = "Удалить поддержку"
+
+support_progress_possible = "✅ Прогресс возможен"
+support_no_progress = "❌ Прогресс невозможен"
+
+release_approve = "✅ Разрешить освобождение"
+release_deny    = "❌ Отклонить"

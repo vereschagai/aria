@@ -1,0 +1,61 @@
+/**
+ * PM2 ecosystem config — EXAMPLE FILE (safe to commit).
+ * Copy to deployment.config.js and fill in real values (which are gitignored).
+ *
+ * Deploy:   npm run deploy-prod
+ * Rollback: npm run rollback-prod
+ */
+
+module.exports = {
+  apps: [
+    {
+      name: "aria-telegram-bot-production",
+      script: "main.py",
+      interpreter: "python3",
+      env_production: {
+        BOT_TOKEN: "<PRODUCTION_BOT_TOKEN>",
+        DB_HOST: "<PRODUCTION_DB_HOST>",
+        DB_PORT: "27017",
+        DB_NAME: "aria",
+        DB_USERNAME: "<PRODUCTION_DB_USERNAME>",
+        DB_PASSWORD: "<PRODUCTION_DB_PASSWORD>",
+      },
+    },
+    {
+      name: "aria-telegram-bot-qa",
+      script: "main.py",
+      interpreter: "python3",
+      env_qa: {
+        BOT_TOKEN: "<QA_BOT_TOKEN>",
+        DB_HOST: "<QA_DB_HOST>",
+        DB_PORT: "27017",
+        DB_NAME: "aria_qa",
+        DB_USERNAME: "<QA_DB_USERNAME>",
+        DB_PASSWORD: "<QA_DB_PASSWORD>",
+      },
+    },
+  ],
+
+  deploy: {
+    production: {
+      user: "<SSH_USER>",
+      host: "<PRODUCTION_HOST>",
+      port: "<SSH_PORT>",
+      ref: "origin/master",
+      repo: "https://<GITHUB_TOKEN>@github.com/<ORG>/<REPO>.git",
+      path: "<REMOTE_PATH>",
+      "post-deploy":
+        "pip3 install -r requirements.txt && pm2 reload deployment.config.js --env production --force",
+    },
+    qa: {
+      user: "<SSH_USER>",
+      host: "<QA_HOST>",
+      port: "22",
+      ref: "origin/master",
+      repo: "https://<GITHUB_TOKEN>@github.com/<ORG>/<REPO>.git",
+      path: "<REMOTE_PATH>",
+      "post-deploy":
+        "pip3 install -r requirements.txt && pm2 reload deployment.config.js --env qa --force",
+    },
+  },
+};

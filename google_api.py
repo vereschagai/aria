@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 from apiclient import discovery
@@ -7,8 +6,6 @@ from tenacity import retry, wait_exponential
 
 class GoogleSheets:
     def __init__(self, aria_gameplay_sheet_id):
-        self.loop = asyncio.new_event_loop()
-
         scopes = ["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/spreadsheets"]
         secret_file = os.path.join(os.getcwd(), 'client_secret.json')
 
