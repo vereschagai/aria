@@ -22,7 +22,7 @@ class GoogleSheetSynchonizer:
         self.progress_monitor = progress_monitor  # injected after ProgressMonitor is created
 
     async def grab_accounts(self):
-        sheet_accounts = self.api.get_accounts()
+        sheet_accounts = await self.api.get_accounts()
 
         config = await self.db.get_config()
         min_progress = config.get("min_progress_points", 50) if config else 50

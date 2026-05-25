@@ -45,7 +45,9 @@ DB_USERNAME = os.environ.get('DB_USERNAME')
 DB_PASSWORD = os.environ.get('DB_PASSWORD')
 
 # Google Sheets
-ARIA_GAMEPLAY_SHEET_ID = '18NtTSuIWVU9sGdnJ_NGlnsowPD1oBtUyZmCULvmAcZ4'
+ARIA_SHEET_ID = os.environ.get('ARIA_SHEET_ID')
+if not ARIA_SHEET_ID:
+    raise RuntimeError("ARIA_SHEET_ID environment variable is required")
 
 bot = Bot(token=BOT_TOKEN)
 Bot.set_current(bot)
@@ -55,7 +57,7 @@ dp = Dispatcher(bot=bot, storage=storage, loop=asyncio.get_event_loop())
 
 db = MongoDb(host=DB_HOST, port=DB_PORT, db_name=DB_NAME, username=DB_USERNAME, password=DB_PASSWORD)
 api = GoogleSheets(
-    aria_gameplay_sheet_id=ARIA_GAMEPLAY_SHEET_ID
+    aria_gameplay_sheet_id=ARIA_SHEET_ID
 )
 
 progress_monitor = ProgressMonitor(bot, db)
@@ -520,6 +522,9 @@ async def gamer_account(message: types.Message, state: FSMContext):
     accounts = await db.get_gamer_accounts(gamer["_id"])
     accounts.sort(key=lambda a: a.get("tower", {}).get("points", 0), reverse=True)
 
+    db_config = await db.get_config()
+    support_handle = db_config.get("support_handle", "@goldalfsupp") if db_config else "@goldalfsupp"
+
     if len(accounts) > 0:
         balance = season_points
 
@@ -549,7 +554,8 @@ Proxy:
             referral=utils.escape(referral),
             referral_count=referral_count,
             balance=balance,
-            accounts_table=accounts_table
+            accounts_table=accounts_table,
+            support_handle=utils.escape(support_handle)
         ),
         reply_markup=markup,
         parse_mode="MarkdownV2"

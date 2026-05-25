@@ -161,10 +161,13 @@ Maps every request and design decision from the design chat to its implementatio
 | Issue | Priority | Notes |
 |---|---|---|
 | `client_secret.json` in git history | High | BFG Repo Cleaner or `git filter-branch --index-filter` needed |
-| `google_api.py` blocks asyncio event loop during Sheets sync | Medium | Sync HTTP client inside async context. Fix: wrap in `asyncio.get_event_loop().run_in_executor(None, api.get_accounts)`. Latency risk on large sheets, not a correctness bug. |
-| `@goldalfsupp` hardcoded in `texts.py` line 184 | Low | Support handle not configurable. Should come from DB config or env. |
+| `google_api.py` blocks asyncio event loop during Sheets sync | Medium | ✅ Fixed — `get_accounts()` is now `async`; blocking HTTP call wrapped in `loop.run_in_executor(None, ...)`. `sheet_synchonizer.py` updated to `await` the call. |
+| `@goldalfsupp` hardcoded in `texts.py` line 184 | Low | ✅ Fixed — `texts.py` uses `{support_handle}` template. `config.py` seeds `support_handle: "@goldalfsupp"`. `gamer_account` handler in `main.py` fetches from `db.get_config()` and passes through `utils.escape()`. |
 | Superadmin Telegram ID hardcoded in `main.py` | Low | By design (seeded to DB on startup), but requires code change to add a second superadmin. |
-| Google Sheet ID hardcoded in `main.py` | Low | Should be env var. |
+| Google Sheet ID hardcoded in `main.py` | Low | ✅ Fixed — moved to `ARIA_SHEET_ID` env var with `RuntimeError` if unset (same pattern as `BOT_TOKEN`). |
 | No automated tests | Low | No test files anywhere in repo. |
 | `aiocron` in `requirements.txt` — verify if actually used | Low | Flagged in design chat as potentially unused. |
-| `inactivity_day_buffer_hours` dead config field | Low | Kept for DB compat. Can be cleaned up in a future migration. |
+| `inactivity_day_buffer_hours` dead config field | Low | ✅ Fixed — removed from `config.py` seed. Migration scripts left untouched. Field will remain in existing DB documents but is not seeded on new instances. |
+| `ws_resolver.js` must be started with `INCLUDE_METAMASK=true` | Medium | ✅ Fixed — wallet tasks fail fast with a clear error if `METAMASK_PATH` is unset; `METAMASK_REQUIRED_TASK_TYPES` set added to `ws_resolver.js` |
+| `_ariaMetamaskCache` — single-flight only keyed per profileName | Medium | ✅ Fixed — replaced per-profile in-flight map with a single shared `_ariaSheetInflight` module-level promise; any cache miss awaits the same in-flight read |
+| `ws_stabilizer.js` only restarts on non-"Target closed" exit | Medium | ✅ Fixed — restart condition removed; process now always restarts on exit regardless of stderr content |

@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 from apiclient import discovery
@@ -29,5 +30,9 @@ class GoogleSheets:
         result = self.sheets.values().get(spreadsheetId=spreadsheet_id, range=range_name).execute()
         return result.get('values', [])
 
-    def get_accounts(self):
-        return self.__get_sheet_values(self.aria_gameplay_sheet_id, self.__build_accounts_range('A2', 'AQ'))
+    async def get_accounts(self):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self.__get_sheet_values(self.aria_gameplay_sheet_id, self.__build_accounts_range('A2', 'AQ'))
+        )
