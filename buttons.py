@@ -4,9 +4,6 @@ superadmin_remove_admin = "Удалить админа"
 configuration = "⚙️ Конфигурация"
 feed = "Связь с общественностью"
 
-admin_add_operator = "Добавить оператора"
-admin_remove_operator = "Удалить оператора"
-
 admin_grab_accounts = "Акки на базу"
 
 confirm = "✅ Подтвердить"

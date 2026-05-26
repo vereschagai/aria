@@ -1,6 +1,14 @@
 # Aria — Knowledge Graph Index
 
 ## Architecture Docs
+## Claude Memory (Hot Cache)
+- [[memory/MEMORY]] — Boot index: protocol, quick rules, session handoff
+- [[memory/project_aria]] — Project context: stack, season state, gaps, deployment
+- [[memory/feedback_aria_workflow]] — Coding rules Claude must follow every session
+- [[memory/reference_aria_codebase]] — Where things live: files, env vars, DB collections
+
+> Read `aria/memory/MEMORY.md` via Obsidian MCP at the start of every session.
+
 - [[CONTEXT]] — stack, architecture, components, dependencies
 - [[DECISIONS]] — all architectural decision records (12 ADRs)
 - [[PROGRESS]] — what is implemented

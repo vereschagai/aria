@@ -3,12 +3,12 @@ ProgressMonitor — inactivity detection and support escalation.
 
 Called automatically after every sheet sync via GoogleSheetSynchonizer.
 
-Inactivity is measured in calendar days (UTC):
+Inactivity is measured in calendar days (local time):
   - 1 calendar day without progress  → warn gamer (once per day)
   - N calendar days (inactivity_escalation_days config, default 3) → escalate to support
 """
 
-from datetime import datetime
+from datetime import datetime, date
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -29,7 +29,7 @@ class ProgressMonitor:
         escalation_days = config.get("inactivity_escalation_days", 3) if config else 3
 
         accounts = await self.db.get_active_assigned_accounts()
-        today = datetime.utcnow().date()
+        today = date.today()
         today_ordinal = today.toordinal()
 
         for account in accounts:

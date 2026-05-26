@@ -22,7 +22,6 @@ from state import TelegramState
 from google_api import GoogleSheets
 from sheet_synchonizer import GoogleSheetSynchonizer
 from progress_monitor import ProgressMonitor
-from operator_controller import OperatorController
 from config import config
 import utils
 
@@ -33,7 +32,7 @@ if not BOT_TOKEN:
 superadmins = [
     {
         'id': 208809955,
-        'name': 'ivanvereschaga',
+        'name': 'PoluBotOK',
     }
 ]
 
@@ -63,8 +62,6 @@ api = GoogleSheets(
 progress_monitor = ProgressMonitor(bot, db)
 synchonizer = GoogleSheetSynchonizer(db, api, progress_monitor=progress_monitor)
 
-operator_controller = OperatorController(dp, bot, db)
-
 
 async def init():
     await db.ensure_indexes()
@@ -93,16 +90,12 @@ asyncio.run_coroutine_threadsafe(init(), dp.loop)
 @dp.message_handler(CommandStart(), state=TelegramState.address)
 @dp.message_handler(CommandStart(), state=TelegramState.leaderboard)
 @dp.message_handler(CommandStart(), state=TelegramState.superadmin_start)
-@dp.message_handler(CommandStart(), state=TelegramState.admin_start)
-@dp.message_handler(CommandStart(), state=TelegramState.operator_start)
 @dp.message_handler(CommandStart(), state=TelegramState.support_start)
 @dp.message_handler(CommandStart(), state=TelegramState.gamer_release_account)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.superadmin_add_admin)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.superadmin_feed)
-@dp.message_handler(Text(equals=buttons.back), state=TelegramState.admin_add_operator)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.admin_add_support)
 @dp.message_handler(Text(equals=buttons.cancel), state=TelegramState.superadmin_remove_admin_confirm)
-@dp.message_handler(Text(equals=buttons.cancel), state=TelegramState.admin_remove_operator_confirm)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.account)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.referral)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.gamer_release_account)
@@ -110,19 +103,7 @@ async def start(message: types.Message, state: FSMContext):
     if await db.is_superadmin(message.from_user.id):
         print("is_superadmin")
         await TelegramState.superadmin_start.set()
-
         await utils.safe_wrap(lambda: message.answer(texts.superadmin_start, reply_markup=markups.superadmin_start))
-    elif await db.is_admin(message.from_user.id):
-        print("is_admin")
-        await TelegramState.admin_start.set()
-
-        if await db.get_admin({ "username": message.from_user.username }) == None:
-            await db.db["admin"].update_one({ "id": message.from_user.id }, { "$set": { "username": message.from_user.username } })
-
-        await utils.safe_wrap(lambda: message.answer(texts.admin_start, reply_markup=markups.admin_start))
-    elif await db.is_operator(message.from_user.id):
-        print("is_operator")
-        await operator_controller.main(message.from_user.id)
     elif await db.is_support(message.from_user.id):
         print("is_support")
         await TelegramState.support_start.set()
@@ -148,7 +129,7 @@ async def start(message: types.Message, state: FSMContext):
             if len(parts) == 2 and parts[1].isdigit():
                 referral = int(parts[1])
 
-            if referral == message.from_user.id or (not await db.is_gamer({ "id": referral }) and not await db.is_superadmin(referral) and not await db.is_admin(referral) and not await db.is_operator(referral)):
+            if referral == message.from_user.id or (not await db.is_gamer({ "id": referral }) and not await db.is_superadmin(referral) and not await db.is_support(referral)):
                 referral = None
 
             if not has_username and referral:
@@ -259,27 +240,20 @@ async def superadmin_feed_send(message: types.Message):
 
 
 # =============================================================================
-# Admin / Superadmin — add/remove operators and support
+# Superadmin — add/remove superadmins and support
 # =============================================================================
 
 @dp.message_handler(Text(equals=buttons.superadmin_add_admin), state=TelegramState.superadmin_start)
-@dp.message_handler(Text(equals=buttons.admin_add_operator), state=TelegramState.superadmin_start)
-@dp.message_handler(Text(equals=buttons.admin_add_operator), state=TelegramState.admin_start)
 @dp.message_handler(Text(equals=buttons.admin_add_support), state=TelegramState.superadmin_start)
-@dp.message_handler(Text(equals=buttons.admin_add_support), state=TelegramState.admin_start)
 async def admin_add(message: types.Message):
     if message.text == buttons.superadmin_add_admin:
         await TelegramState.superadmin_add_admin.set()
         await utils.safe_wrap(lambda: message.answer(texts.superadmin_add, reply_markup=markups.back))
-    elif message.text == buttons.admin_add_operator:
-        await TelegramState.admin_add_operator.set()
-        await utils.safe_wrap(lambda: message.answer(texts.admin_add.format(contragent="оператор"), reply_markup=markups.back))
     elif message.text == buttons.admin_add_support:
         await TelegramState.admin_add_support.set()
         await utils.safe_wrap(lambda: message.answer(texts.admin_add_support_prompt, reply_markup=markups.back))
 
 @dp.message_handler(content_types=types.ContentType.CONTACT, state=TelegramState.superadmin_add_admin)
-@dp.message_handler(content_types=types.ContentType.CONTACT, state=TelegramState.admin_add_operator)
 @dp.message_handler(content_types=types.ContentType.CONTACT, state=TelegramState.admin_add_support)
 async def admin_added(message: types.Message, state: FSMContext):
     if not message.contact.user_id:
@@ -287,138 +261,93 @@ async def admin_added(message: types.Message, state: FSMContext):
         return
 
     current_state = await state.get_state()
-    isSuperadmin = await db.is_superadmin(message.from_user.id)
-    markup = markups.superadmin_start if isSuperadmin else markups.admin_start
 
     if current_state == "TelegramState:superadmin_add_admin":
         await TelegramState.superadmin_start.set()
-        if not await db.is_admin(message.contact.user_id):
-            await db.add_admin(message.contact)
+        if not await db.is_superadmin(message.contact.user_id):
+            await db.add_superadmin({"id": message.contact.user_id, "username": message.contact.full_name})
             await utils.safe_wrap(lambda: message.answer(texts.superadmin_added.format(name=message.contact.full_name), reply_markup=markups.superadmin_start))
         else:
             await utils.safe_wrap(lambda: message.answer(texts.superadmin_add_exists.format(name=message.contact.full_name), reply_markup=markups.superadmin_start))
 
-    elif current_state == "TelegramState:admin_add_support":
-        if isSuperadmin:
-            await TelegramState.superadmin_start.set()
-        else:
-            await TelegramState.admin_start.set()
+    else:  # admin_add_support
+        await TelegramState.superadmin_start.set()
         if not await db.is_support(message.contact.user_id):
             await db.add_support(message.contact)
-            await utils.safe_wrap(lambda: message.answer(texts.admin_added.format(contragent="Поддержка", name=message.contact.full_name), reply_markup=markup))
+            await utils.safe_wrap(lambda: message.answer(texts.admin_added.format(contragent="Поддержка", name=message.contact.full_name), reply_markup=markups.superadmin_start))
         else:
-            await utils.safe_wrap(lambda: message.answer(texts.admin_add_exists.format(contragent="Поддержка", name=message.contact.full_name), reply_markup=markup))
-
-    else:  # admin_add_operator
-        if isSuperadmin:
-            await TelegramState.superadmin_start.set()
-        else:
-            await TelegramState.admin_start.set()
-        if not await db.is_operator(message.contact.user_id):
-            await db.add_operator(message.contact)
-            await utils.safe_wrap(lambda: message.answer(texts.admin_added.format(contragent="Оператор", name=message.contact.full_name), reply_markup=markup))
-        else:
-            await utils.safe_wrap(lambda: message.answer(texts.admin_add_exists.format(contragent="Оператор", name=message.contact.full_name), reply_markup=markup))
+            await utils.safe_wrap(lambda: message.answer(texts.admin_add_exists.format(contragent="Поддержка", name=message.contact.full_name), reply_markup=markups.superadmin_start))
 
 @dp.message_handler(content_types=types.ContentType.ANY, state=TelegramState.superadmin_add_admin)
-@dp.message_handler(content_types=types.ContentType.ANY, state=TelegramState.admin_add_operator)
 @dp.message_handler(content_types=types.ContentType.ANY, state=TelegramState.admin_add_support)
 async def admin_added_error(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     if current_state == "TelegramState:superadmin_add_admin":
         await utils.safe_wrap(lambda: message.answer(texts.superadmin_added_error))
-    elif current_state == "TelegramState:admin_add_support":
+    else:  # admin_add_support
         await utils.safe_wrap(lambda: message.answer(texts.admin_added_error.format(contragent="поддержку")))
-    else:
-        await utils.safe_wrap(lambda: message.answer(texts.admin_added_error.format(contragent="оператора")))
 
 
 @dp.message_handler(Text(equals=buttons.superadmin_remove_admin), state=TelegramState.superadmin_start)
-@dp.message_handler(Text(equals=buttons.admin_remove_operator), state=TelegramState.admin_start)
-@dp.message_handler(Text(equals=buttons.admin_remove_operator), state=TelegramState.superadmin_start)
-@dp.message_handler(Text(equals=buttons.admin_remove_support), state=TelegramState.admin_start)
 @dp.message_handler(Text(equals=buttons.admin_remove_support), state=TelegramState.superadmin_start)
 async def admin_remove(message: types.Message):
     isSuperadmin = message.text == buttons.superadmin_remove_admin
     isSupport = message.text == buttons.admin_remove_support
 
     if isSuperadmin:
-        count = await db.count_admins({})
-        entities = await db.get_admins() if count > 0 else []
-    elif isSupport:
+        count = await db.count_superadmin_peers(message.from_user.id)
+        entities = await db.get_superadmin_peers(message.from_user.id) if count > 0 else []
+    else:  # isSupport
         count = await db.count_support_users()
         entities = await db.get_support_users() if count > 0 else []
-    else:
-        count = await db.count_operators({})
-        entities = await db.get_operators() if count > 0 else []
 
     if count > 0:
         markup = types.InlineKeyboardMarkup(row_width=1)
         for entity in entities:
-            label = (entity["username"] + " " if "username" in entity else "") + entity["phone"]
+            label = (entity["username"] + " " if "username" in entity else "") + entity.get("phone", str(entity["id"]))
             markup.add(types.InlineKeyboardButton(label, callback_data=str(entity["id"])))
         markup.add(types.InlineKeyboardButton(buttons.back, callback_data="back"))
 
         if isSuperadmin:
             await TelegramState.superadmin_remove_admin.set()
-        elif isSupport:
-            await TelegramState.support_remove.set()
         else:
-            await TelegramState.admin_remove_operator.set()
+            await TelegramState.support_remove.set()
 
         await utils.safe_wrap(lambda: message.answer(texts.admin_remove, reply_markup=markup))
     else:
-        if isSuperadmin:
-            text = texts.superadmin_remove_empty
-        elif isSupport:
-            text = texts.admin_remove_support_empty
-        else:
-            text = texts.admin_remove_empty.format(contragent="оператор")
-
-        markup = markups.superadmin_start if await db.is_superadmin(message.from_user.id) else markups.admin_start
-        await utils.safe_wrap(lambda: message.answer(text, reply_markup=markup))
+        text = texts.superadmin_remove_empty if isSuperadmin else texts.admin_remove_support_empty
+        await utils.safe_wrap(lambda: message.answer(text, reply_markup=markups.superadmin_start))
 
 @dp.callback_query_handler(state=TelegramState.superadmin_remove_admin)
-@dp.callback_query_handler(state=TelegramState.admin_remove_operator)
 @dp.callback_query_handler(state=TelegramState.support_remove)
 async def admin_remove_confirm(callback_query: types.CallbackQuery, state: FSMContext):
     current_state = await state.get_state()
     isSuperadmin = current_state == "TelegramState:superadmin_remove_admin"
-    isSupport = current_state == "TelegramState:support_remove"
 
     if callback_query.data == "back":
-        actor_is_superadmin = await db.is_superadmin(callback_query.from_user.id)
-        if actor_is_superadmin:
-            await TelegramState.superadmin_start.set()
-        else:
-            await TelegramState.admin_start.set()
+        # Both superadmin_remove_admin and support_remove are only reachable by superadmins
+        await TelegramState.superadmin_start.set()
         await callback_query.answer("")
-        markup = markups.superadmin_start if actor_is_superadmin else markups.admin_start
-        text = texts.superadmin_start if actor_is_superadmin else texts.admin_start
-        await utils.safe_wrap(lambda: bot.send_message(callback_query.from_user.id, text, reply_markup=markup))
+        await utils.safe_wrap(lambda: bot.send_message(callback_query.from_user.id, texts.superadmin_start, reply_markup=markups.superadmin_start))
         return
 
     search = { "id": int(callback_query.data) }
     if isSuperadmin:
-        entity = await db.get_admin(search)
-    elif isSupport:
+        entity = await db.get_superadmin(search)
+    else:  # support_remove
         entity = await db.get_support_user(search)
-    else:
-        entity = await db.get_operator(search)
 
     if entity is not None:
         if isSuperadmin:
             await TelegramState.superadmin_remove_admin_confirm.set()
-        elif isSupport:
-            await TelegramState.support_remove_confirm.set()
         else:
-            await TelegramState.admin_remove_operator_confirm.set()
+            await TelegramState.support_remove_confirm.set()
 
         await state.set_data(search)
         await callback_query.answer("")
 
-        name = entity["username"] if "username" in entity else entity["phone"]
-        contragent = "админа" if isSuperadmin else ("сотрудника поддержки" if isSupport else "оператора")
+        name = entity["username"] if "username" in entity else entity.get("phone", str(entity["id"]))
+        contragent = "суперадмина" if isSuperadmin else "сотрудника поддержки"
         await utils.safe_wrap(lambda: bot.send_message(
             callback_query.from_user.id,
             texts.admin_remove_confirm.format(contragent=contragent, username=name),
@@ -428,45 +357,34 @@ async def admin_remove_confirm(callback_query: types.CallbackQuery, state: FSMCo
         await utils.safe_wrap(lambda: bot.send_message(callback_query.from_user.id, texts.admin_remove_confirm_error))
 
 @dp.message_handler(Text(equals=buttons.confirm), state=TelegramState.superadmin_remove_admin_confirm)
-@dp.message_handler(Text(equals=buttons.confirm), state=TelegramState.admin_remove_operator_confirm)
 @dp.message_handler(Text(equals=buttons.confirm), state=TelegramState.support_remove_confirm)
 async def admin_remove_confirmed(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
-    isSuperadmin_actor = await db.is_superadmin(message.from_user.id)
-    isAdmin = current_state == "TelegramState:superadmin_remove_admin_confirm"
-    isSupport = current_state == "TelegramState:support_remove_confirm"
+    isSuperadminTarget = current_state == "TelegramState:superadmin_remove_admin_confirm"
 
     search = await state.get_data()
-    if isAdmin:
-        entity = await db.get_admin(search)
-    elif isSupport:
+    if isSuperadminTarget:
+        entity = await db.get_superadmin(search)
+    else:  # support_remove_confirm
         entity = await db.get_support_user(search)
-    else:
-        entity = await db.get_operator(search)
 
-    if isSuperadmin_actor:
-        await TelegramState.superadmin_start.set()
-    else:
-        await TelegramState.admin_start.set()
+    # Both states are only reachable by superadmins
+    await TelegramState.superadmin_start.set()
 
-    if isAdmin:
-        await db.remove_admin(search)
-        contragent = "Админ"
-    elif isSupport:
+    if isSuperadminTarget:
+        await db.remove_superadmin(search)
+        contragent = "Суперадмин"
+    else:
         await db.remove_support(search)
         contragent = "Поддержка"
-    else:
-        await db.remove_operator(search)
-        contragent = "Оператор"
 
     contragent_state = dp.current_state(chat=entity["id"], user=entity["id"])
     await contragent_state.finish()
 
-    name = entity["username"] if "username" in entity else entity["phone"]
-    markup = markups.superadmin_start if isSuperadmin_actor else markups.admin_start
+    name = entity["username"] if "username" in entity else entity.get("phone", str(entity["id"]))
     await utils.safe_wrap(lambda: message.answer(
         texts.admin_removed.format(contragent=contragent, username=name),
-        reply_markup=markup
+        reply_markup=markups.superadmin_start
     ))
 
 
@@ -911,6 +829,89 @@ async def support_decision(callback_query: types.CallbackQuery):
 
 
 # =============================================================================
+# Leaderboard — available to superadmin, support, and gamers
+# =============================================================================
+
+@dp.message_handler(Text(equals=buttons.leaderboard), state=TelegramState.superadmin_start)
+@dp.message_handler(Text(equals=buttons.leaderboard), state=TelegramState.support_start)
+@dp.message_handler(Text(equals=buttons.leaderboard), state=TelegramState.start)
+async def leaderboard_handler(message: types.Message, state: FSMContext):
+    await utils.add_message_history(db, message)
+
+    season_entries = await db.get_all_gamers_season_points()
+
+    # Batch-resolve all gamer ObjectIds in one query instead of N sequential lookups
+    oids = [e["_id"] for e in season_entries if e["_id"] is not None]
+    gamers_list = await db.db.gamers.find({"_id": {"$in": oids}}).to_list(None)
+    oid_to_username = {g["_id"]: g["username"] for g in gamers_list if g.get("username")}
+
+    leaderboard_data = [
+        (oid_to_username[e["_id"]], e["total"])
+        for e in season_entries
+        if e["_id"] in oid_to_username
+    ]
+
+    await _print_leaderboard(message.from_user.id, leaderboard_data)
+
+
+@dp.message_handler(Text(equals=buttons.back), state=TelegramState.leaderboard)
+async def leaderboard_back(message: types.Message, state: FSMContext):
+    await utils.add_message_history(db, message)
+    await start(message, state)
+
+
+async def _print_leaderboard(user_id: int, leaderboard_data: list):
+    has_leaderboard = True
+
+    db_config = await db.get_config()
+    await TelegramState.leaderboard.set()
+
+    gamer = await db.get_gamer(user_id)
+    try:
+        text = '👑 *Leaderboard* 👑\n\n'
+        if gamer:
+            gamer_index = next(i for i, d in enumerate(leaderboard_data) if d[0] == gamer["username"])
+            start_index = max(gamer_index - db_config["leaderboard_gap"], 0)
+            end_index = gamer_index + db_config["leaderboard_gap"] + 1
+            visible_data = leaderboard_data[start_index:end_index]
+        else:
+            gamer_index = 0
+            start_index = 0
+            end_index = len(leaderboard_data)
+            visible_data = leaderboard_data
+
+        if start_index > 0:
+            text += '\.\.\.\n'
+
+        for i, d in enumerate(visible_data):
+            is_me = (i + start_index == gamer_index) and gamer
+            text += (
+                f'{"*" if is_me else ""}'
+                f'{i + start_index + 1}\. '
+                f'{"||Перефарми меня||" if (i + start_index < gamer_index and gamer) else utils.escape(f"@{d[0]}")}'
+                f' {d[1]}'
+                f' {"👑" if i == 0 and start_index == 0 else ""}'
+                f'{"*" if is_me else ""}\n'
+            )
+
+        if end_index < len(leaderboard_data):
+            text += '\.\.\.'
+
+    except StopIteration:
+        has_leaderboard = False
+
+    sent_message = await utils.safe_wrap(lambda: bot.send_message(
+        user_id,
+        text if has_leaderboard else texts.gamer_no_leaderboard,
+        reply_markup=markups.back,
+        parse_mode="MarkdownV2"
+    ))
+
+    await utils.clean_messages(bot, db, user_id)
+    await utils.add_message_history(db, sent_message)
+
+
+# =============================================================================
 # Global error boundary — prevents one bad update from crashing the process
 # =============================================================================
 
@@ -923,7 +924,6 @@ async def global_error_handler(update: types.Update, exception: Exception):
     return True  # returning True suppresses the exception
 
 
-operator_controller.init_handlers()
 if __name__ == '__main__':
     print("Bot started")
     executor.start_polling(dp, skip_updates=False)

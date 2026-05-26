@@ -33,49 +33,23 @@ class MongoDb:
         admin["superadmin"] = True
         return await self.db.admin.insert_one(admin)
 
-    async def get_admins(self):
-        return await self.db.admin.find({ "superadmin": False }).to_list(None)
-
-    async def count_admins(self, search):
-        search["superadmin"] = False
-        return await self.db.admin.count_documents(search)
-
-    async def is_admin(self, user_id):
-        return await self.db.admin.find_one({ "id": user_id, "superadmin": False }) != None
-
-    async def get_admin(self, search):
-        search["superadmin"] = False
+    async def get_superadmin(self, search: dict):
+        """Fetch a single superadmin document matching search."""
+        search = {**search, "superadmin": True}
         return await self.db.admin.find_one(search)
 
-    async def add_admin(self, contact):
-        return await self.db.admin.insert_one({ "id": contact.user_id, "phone": contact.phone_number, "superadmin": False })
-
-    async def remove_admin(self, search):
-        search["superadmin"] = False
+    async def remove_superadmin(self, search: dict):
+        """Delete a superadmin document matching search."""
+        search = {**search, "superadmin": True}
         return await self.db.admin.delete_one(search)
 
+    async def get_superadmin_peers(self, exclude_id: int):
+        """All superadmins except the caller — used for the remove-superadmin list."""
+        return await self.db.admin.find({ "superadmin": True, "id": { "$ne": exclude_id } }).to_list(None)
 
-    # -------------------------------------------------------------------------
-    # Operators
-    # -------------------------------------------------------------------------
+    async def count_superadmin_peers(self, exclude_id: int):
+        return await self.db.admin.count_documents({ "superadmin": True, "id": { "$ne": exclude_id } })
 
-    async def get_operators(self, search = {}):
-        return await self.db.operators.find(search).to_list(None)
-
-    async def count_operators(self, search):
-        return await self.db.operators.count_documents(search)
-
-    async def is_operator(self, user_id):
-        return await self.get_operator({ "id": user_id }) != None
-
-    async def get_operator(self, search):
-        return await self.db.operators.find_one(search)
-
-    async def add_operator(self, contact):
-        return await self.db.operators.insert_one({ "id": contact.user_id, "phone": contact.phone_number })
-
-    async def remove_operator(self, search):
-        return await self.db.operators.delete_one(search)
 
 
     # -------------------------------------------------------------------------
@@ -421,7 +395,6 @@ class MongoDb:
     async def ensure_indexes(self):
         # Role resolution — checked on every incoming message
         await self.db.admin.create_index([("id", ASCENDING), ("superadmin", ASCENDING)])
-        await self.db.operators.create_index("id", unique=True)
         await self.db.support.create_index("id", unique=True)
 
         # Gamers — high-frequency lookups and referral counts
