@@ -39,4 +39,4 @@
 
 ## Dependencies
 
-Used by [[modules/main]] (all handler registrations and state transitions) and [[modules/operator_controller]] (leaderboard state).
+Used by [[modules/main]] (all handler registrations and state transitions). operator_controller removed in Sprint A — leaderboard state now lives in main.

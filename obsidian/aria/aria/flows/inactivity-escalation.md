@@ -52,12 +52,15 @@ _escalate(account):
     "last_notified_day": now.toordinal()
   })
 
-  Build last-5 progress_history summary (formatted dates and deltas)
+  Build last-5 progress_history summary:
+    → filter entries where entry["gamer_id"] == gamer["_id"]  (gamer's own records only)
+    → format dates and deltas with utils.escape() — +/- are MarkdownV2 reserved chars
 
   db.get_support_users()
   Build InlineKeyboardMarkup:
-    [✅ Прогресс возможен | callback: support_progress:<oid>]
-    [❌ Нет прогресса     | callback: support_noprogress:<oid>]
+    [🔓 В пул              | callback: release_pool:<oid>]
+    [🚫 Закрыть навсегда   | callback: release_finish:<oid>]
+    (NO deny button — inactivity-triggered escalation, not on-demand)
 
   For each support user:
     send texts.support_escalation + inline keyboard (MarkdownV2)

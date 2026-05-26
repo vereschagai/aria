@@ -8,6 +8,7 @@ superadmin_start.add(buttons.admin_add_support, buttons.admin_remove_support)
 superadmin_start.add(buttons.leaderboard)
 superadmin_start.add(buttons.admin_grab_accounts)
 superadmin_start.add(buttons.configuration, buttons.feed)
+superadmin_start.add(buttons.finished_accounts)
 
 start = ReplyKeyboardMarkup(resize_keyboard=True, selective=True, one_time_keyboard=False)
 start.add(buttons.account, buttons.leaderboard)
@@ -28,3 +29,4 @@ backaddresschange.add(buttons.back, buttons.change_address)
 
 support_start = ReplyKeyboardMarkup(resize_keyboard=True, selective=True, one_time_keyboard=False)
 support_start.add(buttons.leaderboard)
+support_start.add(buttons.finished_accounts)

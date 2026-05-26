@@ -16,14 +16,13 @@
 - [[NEXT]] — work queue
 
 ## Modules
-- [[modules/main]] — entry point, dispatcher, all handlers (924 lines)
-- [[modules/mongodb]] — database layer (all queries, 443 lines)
-- [[modules/sheet_synchonizer]] — Google Sheets import
+- [[modules/main]] — entry point, dispatcher, all handlers (incl. leaderboard — operator_controller removed Sprint A)
+- [[modules/mongodb]] — database layer (all queries)
+- [[modules/sheet_synchonizer]] — Google Sheets import + `sync_single_account()`
 - [[modules/progress_monitor]] — inactivity tracking and escalation
-- [[modules/operator_controller]] — operator/support routing and leaderboard
 - [[modules/google_api]] — Google Sheets API wrapper
 - [[modules/config]] — configuration defaults
-- [[modules/state]] — FSM states (all 25 states)
+- [[modules/state]] — FSM states (admin/operator states removed Sprint A)
 - [[modules/utils]] — shared utilities
 - [[modules/buttons]] — button label constants
 - [[modules/texts]] — message string templates

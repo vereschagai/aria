@@ -27,4 +27,4 @@ All bot-facing message strings in Russian, pre-escaped for MarkdownV2 where need
 
 ## Dependencies
 
-Used by [[modules/main]], [[modules/progress_monitor]], [[modules/operator_controller]].
+Used by [[modules/main]], [[modules/progress_monitor]]. (operator_controller removed Sprint A)

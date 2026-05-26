@@ -3,8 +3,8 @@ name: reference-aria-codebase
 description: Pointers to key locations in the Aria codebase — where to find/add
   things, env vars, infrastructure details
 type: reference
-updated: 2026-05-26
-version: "3"
+updated: '"2026-05-27"'
+version: "4"
 ---
 
 # Aria Codebase — Reference Pointers
@@ -25,15 +25,14 @@ See [[CONTEXT]] for full component map.
 | Pre-built keyboard markups | `markups.py` — [[modules/markups]] |
 | Config defaults (seeded to MongoDB on startup) | `config.py` — [[modules/config]] |
 | All DB operations | `mongodb.py` — `MongoDb` class — [[modules/mongodb]] |
-| All Telegram handlers | `main.py` (929 lines) — [[modules/main]] |
-| Operator/support routing + leaderboard | `operator_controller.py` — [[modules/operator_controller]] |
-| Sheet sync logic | `sheet_synchonizer.py` — credentials-only, no side effects — [[modules/sheet_synchonizer]] |
+| All Telegram handlers | `main.py` (~950 lines) — [[modules/main]] |
+| Sheet sync logic | `sheet_synchonizer.py` — credentials-only + `sync_single_account()` — [[modules/sheet_synchonizer]] |
 | Inactivity monitoring | `progress_monitor.py` — [[modules/progress_monitor]] |
 | Google Sheets API wrapper | `google_api.py` — async via `run_in_executor` — [[modules/google_api]] |
 | WebSocket task server | `websocket_server.py` — [[modules/websocket_server]] |
 | Shared utilities | `utils.py` — [[modules/utils]] |
-| Test suite | `tests/` — pytest, 36 tests, `pytest tests/ -v` |
-| Test dependencies | `requirements-test.txt` — `pytest`, `pytest-asyncio` |
+| Test suite | `tests/` — pytest, **85 tests**, `pytest tests/ -v` |
+| Test dependencies | `requirements-test.txt` — `pytest`, `pytest-asyncio`, `mongomock` |
 | Deployment npm scripts | `package.json` |
 | Deployment config template | `deployment.config.js.example` |
 
@@ -77,13 +76,27 @@ See [[CONTEXT]] for full component map.
 
 | Collection | Key indexes |
 |---|---|
-| `admin` | `(id, superadmin)` compound |
-| `operators` | `id` unique |
 | `support` | `id` unique |
-| `gamers` | `id` unique, `username` sparse, `referral`, `season_picked_up` sparse |
+| `gamers` | `id` unique, `username` sparse, `referral`, `season_picked_up` sparse, `pool_release_count` |
 | `accounts` | `profile` unique, `gamer_id`, `status`, `last_progress_at`, `tower.points`, `progress_history.gamer_id`, `ownership_history.gamer_id` |
+| `release_blocks` | compound unique `(account_id, gamer_id)` — prevents re-pickup of released accounts |
 | `messages` | `id` unique |
 | `config` | — |
+| `tasks` | `status`, `type`, `profile` |
+
+**`release_blocks` schema:**
+```
+{
+  account_id: ObjectId,   ← ref to accounts._id
+  gamer_id:   ObjectId,   ← ref to gamers._id
+  blocked_at: DateTime,
+  reason:     "on_demand" | "inactivity"
+}
+```
+
+**`gamers` new field:** `pool_release_count: int` (default 0). When >= 5, gamer cannot pick new accounts.
+
+**`accounts` new status:** `finished` — permanent close. New fields: `finished_at`, `finished_by` (support tg id), `final_tower_points`.
 
 ---
 

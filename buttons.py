@@ -27,5 +27,8 @@ admin_remove_support = "Удалить поддержку"
 support_progress_possible = "✅ Прогресс возможен"
 support_no_progress = "❌ Прогресс невозможен"
 
-release_approve = "✅ Разрешить освобождение"
-release_deny    = "❌ Отклонить"
+release_pool   = "🔓 В пул"
+release_finish = "🚫 Закрыть навсегда"
+release_deny   = "↩️ Отклонить"
+
+finished_accounts = "📋 Закрытые аккаунты"

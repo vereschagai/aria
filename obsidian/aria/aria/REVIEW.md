@@ -161,13 +161,42 @@ Maps every request and design decision from the design chat to its implementatio
 | Issue | Priority | Notes |
 |---|---|---|
 | `client_secret.json` in git history | High | BFG Repo Cleaner or `git filter-branch --index-filter` needed |
-| `google_api.py` blocks asyncio event loop during Sheets sync | Medium | ✅ Fixed — `get_accounts()` is now `async`; blocking HTTP call wrapped in `loop.run_in_executor(None, ...)`. `sheet_synchonizer.py` updated to `await` the call. |
-| `@goldalfsupp` hardcoded in `texts.py` line 184 | Low | ✅ Fixed — `texts.py` uses `{support_handle}` template. `config.py` seeds `support_handle: "@goldalfsupp"`. `gamer_account` handler in `main.py` fetches from `db.get_config()` and passes through `utils.escape()`. |
-| Superadmin Telegram ID hardcoded in `main.py` | Low | By design (seeded to DB on startup), but requires code change to add a second superadmin. |
-| Google Sheet ID hardcoded in `main.py` | Low | ✅ Fixed — moved to `ARIA_SHEET_ID` env var with `RuntimeError` if unset (same pattern as `BOT_TOKEN`). |
-| No automated tests | Low | No test files anywhere in repo. |
-| `aiocron` in `requirements.txt` — verify if actually used | Low | Flagged in design chat as potentially unused. |
-| `inactivity_day_buffer_hours` dead config field | Low | ✅ Fixed — removed from `config.py` seed. Migration scripts left untouched. Field will remain in existing DB documents but is not seeded on new instances. |
-| `ws_resolver.js` must be started with `INCLUDE_METAMASK=true` | Medium | ✅ Fixed — wallet tasks fail fast with a clear error if `METAMASK_PATH` is unset; `METAMASK_REQUIRED_TASK_TYPES` set added to `ws_resolver.js` |
-| `_ariaMetamaskCache` — single-flight only keyed per profileName | Medium | ✅ Fixed — replaced per-profile in-flight map with a single shared `_ariaSheetInflight` module-level promise; any cache miss awaits the same in-flight read |
-| `ws_stabilizer.js` only restarts on non-"Target closed" exit | Medium | ✅ Fixed — restart condition removed; process now always restarts on exit regardless of stderr content |
+| `google_api.py` blocks asyncio event loop during Sheets sync | Medium | ✅ Fixed |
+| `@goldalfsupp` hardcoded in `texts.py` line 184 | Low | ✅ Fixed |
+| Superadmin Telegram ID hardcoded in `main.py` | Low | By design (seeded to DB on startup) |
+| Google Sheet ID hardcoded in `main.py` | Low | ✅ Fixed — moved to `ARIA_SHEET_ID` env var |
+| No automated tests | Low | ✅ Fixed — **85 tests** passing. Run with `pytest tests/ -v` (requires `mongomock` installed). |
+| `aiocron` in `requirements.txt` — verify if actually used | Low | Flagged as potentially unused. |
+| `inactivity_day_buffer_hours` dead config field | Low | ✅ Fixed — removed from config seed |
+| `ws_resolver.js` must be started with `INCLUDE_METAMASK=true` | Medium | ✅ Fixed |
+| `_ariaMetamaskCache` — single-flight only keyed per profileName | Medium | ✅ Fixed |
+| `ws_stabilizer.js` only restarts on non-"Target closed" exit | Medium | ✅ Fixed |
+
+### Test Suite Map (85 tests total)
+
+| File | Tests | What it covers |
+|---|---|---|
+| `tests/test_mongodb_eligibility.py` | 1 | Ban check (pool_release_count ≥ 5 blocks pickup) |
+| `tests/test_mongodb_sprint_e.py` | 8 | `add_release_block`, `get_gamer_release_block_ids`, `increment_pool_release_count`, `finish_account`, `get_finished_accounts`, `$nin` block exclusion |
+| `tests/test_gamer_handlers.py` | 18 | Pickup/release/account-screen handler behavior — aiogram mocked, DB mocked via AsyncMock |
+| `tests/test_message_format.py` | 14 | `utils.escape()` unit tests, char-by-char MarkdownV2 validator, 4096-char message length limits, 64-char callback data limit |
+| `tests/test_load_and_race.py` | 8 | 25-account slot/progress load tests, simultaneous pickup race (asyncio.gather + mongomock atomicity) |
+| `tests/test_progress_monitor.py` | ~36 | Inactivity escalation logic |
+
+**Shared test infrastructure (`tests/conftest.py`):**
+- `assert_valid_markdownv2(text)` — char-by-char MarkdownV2 validator; `*_~` allowed bare (formatting markers), all other reserved chars must be backslash-escaped
+- `make_fake_account(profile, status, gamer_oid, points, delta)` — realistic account document
+- `make_fake_gamer(user_id, username, pool_release_count)` — realistic gamer document
+- `_TelegramStateMock` — mock FSM state with `async def set()` on every attribute
+
+**Race condition test pattern:**
+```python
+claimed = [False]
+async def mock_pickup(gamer_oid):
+    if not claimed[0]:
+        claimed[0] = True
+        return fake_account
+    return None
+results = await asyncio.gather(*[pickup(g) for g in gamers])
+assert results.count(fake_account) == 1
+```

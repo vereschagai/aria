@@ -109,6 +109,56 @@ class GoogleSheetSynchonizer:
         if self.progress_monitor:
             await self.progress_monitor.check_all()
 
+    async def sync_single_account(self, profile: str):
+        """Fetch latest sheet data for one profile and append a progress_history entry.
+        Best-effort — used to capture final points before ownership changes."""
+        try:
+            sheet_accounts = await self.api.get_accounts()
+            row = None
+            for a in sheet_accounts:
+                if a and a[0].strip() == profile:
+                    row = a
+                    break
+            if not row:
+                return
+
+            # Find latest non-empty sync column (index 8+), scanning right to left
+            tower_data = None
+            for col_idx in range(len(row) - 1, 7, -1):
+                val = row[col_idx] if col_idx < len(row) else None
+                if val and val != "#N/A":
+                    tower_data = self.__parse_tower(val)
+                    break
+            if not tower_data:
+                return
+
+            account = await self.db.get_account(profile)
+            if not account:
+                return
+
+            history = account.get("progress_history", [])
+            last_points = history[-1]["tower_points"] if history else 0
+            delta = tower_data["points"] - last_points
+            if delta == 0:
+                return  # no new data since last sync
+
+            now = datetime.utcnow()
+            entry = {
+                "gamer_id": account.get("gamer_id"),
+                "synced_at": now,
+                "tower_points": tower_data["points"],
+                "delta": delta,
+            }
+            await self.db.db.accounts.update_one(
+                {"profile": profile},
+                {
+                    "$push": {"progress_history": entry},
+                    "$set": {"tower": tower_data, "last_progress_at": now},
+                }
+            )
+        except Exception:
+            pass  # best-effort — never block the release flow
+
     # -------------------------------------------------------------------------
     # Private helpers
     # -------------------------------------------------------------------------

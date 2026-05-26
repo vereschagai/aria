@@ -293,11 +293,19 @@ gamer_release_account_sent = '''
 Поддержка рассмотрит его в ближайшее время\.
 '''
 
-gamer_release_account_approved = '''
-✅ *Аккаунт {profile} освобождён\.*
+gamer_release_account_pool_approved = "✅ Аккаунт *{profile}* отправлен в пул\\. Ваш прогресс засчитан\\."
 
-Всё хорошо — ваши очки за него остаются при вас\.
-'''
+gamer_release_account_finished = "🚫 Аккаунт *{profile}* закрыт на сезон\\. Ваш прогресс сохранён\\."
+
+gamer_pickup_banned = (
+    "⛔ Вы освободили слишком много аккаунтов\\.\n"
+    "Брать новые аккаунты больше нельзя\\.\n"
+    "Ваш прогресс по всем аккаунтам сохранён и будет учтён при выплате\\."
+)
+
+support_finished_accounts_header = "📋 *Закрытые аккаунты*\n\n"
+support_finished_accounts_item = "• *{profile}* — {gamer_username} — {finished_at} — {points} pts\n"
+support_finished_accounts_empty = "Закрытых аккаунтов пока нет\\."
 
 gamer_release_account_denied = '''
 ❌ *Аккаунт {profile} остаётся за вами\.*

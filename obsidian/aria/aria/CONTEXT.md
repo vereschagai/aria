@@ -6,7 +6,7 @@
 
 **Telegram bot framework:** aiogram 2.20 — FSM, handlers, dispatcher. EOL; migration to v3 is a breaking rewrite, deferred.
 
-**Database:** MongoDB via motor 3.0.0 (async driver). Single `MongoDb` class wraps all queries. Collections: `admins`, `operators`, `support`, `gamers`, `accounts`, `messages`, `config`.
+**Database:** MongoDB via motor 3.0.0 (async driver). Single `MongoDb` class wraps all queries. Collections: `support`, `gamers`, `accounts`, `messages`, `config`, `release_blocks`. (admins, operators collections removed Sprint A — never populated in production.)
 
 **Google Sheets:** google-api-python-client 2.2.0 + google-auth 1.30.0. Service account auth via `client_secret.json` (gitignored, must exist at runtime). Used as a read-only data source for account credentials and tower points.
 
@@ -32,9 +32,9 @@ Single Python process (managed by PM2) running an aiogram 2.x Telegram bot for g
 ```
 Telegram users
     ↓
-main.py  (aiogram dispatcher — all handlers, FSM, role routing)
-    ↓                              ↓
-mongodb.py  (MongoDb class)    operator_controller.py  (leaderboard, role routing for operators)
+main.py  (aiogram dispatcher — all handlers, FSM, role routing, leaderboard)
+    ↓
+mongodb.py  (MongoDb class)
     ↓
 Motor → MongoDB
 
@@ -47,31 +47,30 @@ migration_season4.py  ]
 mongo_scripts.py       ]  reward calculation, run locally
 ```
 
-**Role hierarchy:** superadmin → admin → operator → support → gamer
+**Role hierarchy (Sprint A):** superadmin → support → gamer  
+_(admin and operator roles removed — never used in production)_
 
 ---
 
 ## Key Components
 
-**`main.py`** (924 lines) — Entry point and monolith. Handles all Telegram message routing, FSM states, role resolution on `/start`, and the global error handler. Wires up `MongoDb`, `GoogleSheets`, `GoogleSheetSynchonizer`, `ProgressMonitor`, `OperatorController`.
+**`main.py`** (~950 lines) — Entry point and monolith. Handles all Telegram message routing, FSM states, role resolution on `/start`, and the global error handler. Wires up `MongoDb`, `GoogleSheets`, `GoogleSheetSynchonizer`, `ProgressMonitor`. Includes leaderboard logic (absorbed from operator_controller which was deleted in Sprint A).
 
-**`mongodb.py`** (443 lines) — All DB logic. Key methods: `pickup_account()` (atomic auto-assignment with P1/P2 priority), `check_assignment_eligibility()` (slot + progress check), `release_account()` (closes ownership history, unsets sparse fields), `get_all_gamers_season_points()` / `get_gamer_season_points()` (aggregation pipelines), `ensure_indexes()` (creates all indexes on startup).
+**`mongodb.py`** (~470 lines) — All DB logic. Key methods: `pickup_account()` (atomic auto-assignment with P1/P2 priority, `$nin` block exclusion), `check_assignment_eligibility()` (slot + progress + ban check), `release_account()` (closes ownership history, unsets sparse fields), `get_all_gamers_season_points()` / `get_gamer_season_points()` (aggregation pipelines), `ensure_indexes()` (creates all indexes on startup). Sprint E additions: `add_release_block`, `get_gamer_release_block_ids`, `increment_pool_release_count`, `finish_account`, `get_finished_accounts`.
 
-**`sheet_synchonizer.py`** (173 lines) — Reads Accounts tab from Google Sheets. Column layout: `[0]` profile, `[1]` login, `[2]` password, `[3]` proxy, `[4]` old gamer (ignored), `[5]` active, `[6]` gamer (ignored per Option C), `[7]` TP Start (`points;rank;floor`), `[8+]` daily columns (same format). Skips rows where Active or Proxy is `#N/A`. After all updates, calls `ProgressMonitor.check_all()`.
+**`sheet_synchonizer.py`** (~173 lines) — Reads Accounts tab from Google Sheets. Column layout: `[0]` profile, `[1]` login, `[2]` password, `[3]` proxy, `[4]` old gamer (ignored), `[5]` active, `[6]` gamer (ignored per Option C), `[7]` TP Start (`points;rank;floor`), `[8+]` daily columns (same format). Skips rows where Active or Proxy is `#N/A`. Sprint E: `sync_single_account(profile)` — called explicitly when account enters `pending_release`.
 
-**`progress_monitor.py`** (172 lines) — Post-sync inactivity checks. Calendar-day delta from `last_progress_at`. Day 1–2: warning to gamer. Day 3+: escalate to all support users with last-5-progress summary + inline decision buttons.
+**`progress_monitor.py`** (~172 lines) — Post-sync inactivity checks. Calendar-day delta from `last_progress_at`. Day 1–2: warning to gamer. Day 3+: escalate to all support users with last-5-progress summary (filtered to gamer's own entries) + inline decision buttons (`release_pool` / `release_finish`).
 
-**`operator_controller.py`** (110 lines) — Leaderboard and role-routing for operators/support. Fetches season points via single aggregation + batch username resolution (2 DB round-trips regardless of guild size).
+**`state.py`** (26 lines) — All FSM states. `TelegramState(StatesGroup)` with states for all roles and flows. Admin/operator states removed Sprint A.
 
-**`state.py`** (31 lines) — All FSM states. `TelegramState(StatesGroup)` with states for all roles and flows including `gamer_release_account`, `support_start`, `support_remove`.
+**`config.py`** — In-memory seed dict for the `config` MongoDB collection. Seeded on startup. Governs: `min_progress_points` (50), `max_accounts_per_gamer` (10), `inactivity_escalation_days` (3), `leaderboard_gap` (4), `support_handle` (`@goldalfsupp`).
 
-**`config.py`** — In-memory seed dict for the `config` MongoDB collection. Seeded on startup. Governs: `min_progress_points` (seed: 10, documented default: 50), `max_accounts_per_gamer` (10), `inactivity_escalation_days` (3), `leaderboard_gap` (4).
-
-**`buttons.py`** / **`texts.py`** / **`markups.py`** — UI layer. Russian-language button labels, MarkdownV2 message strings, pre-built `ReplyKeyboardMarkup` objects. All bot-facing text is here, except one hardcoded string in `operator_controller.py` and a hardcoded support handle (`@goldalfsupp`) in `texts.py`.
+**`buttons.py`** / **`texts.py`** / **`markups.py`** — UI layer. Russian-language button labels, MarkdownV2 message strings, pre-built `ReplyKeyboardMarkup` objects. All bot-facing text is here. Sprint E added: `release_pool`, `release_finish`, `finished_accounts` buttons; `gamer_release_account_pool_approved`, `gamer_release_account_finished`, `gamer_pickup_banned` texts.
 
 **`utils.py`** — `escape()` (MarkdownV2), `add_message_history()` / `clean_messages()` (tracked-message cleanup), `safe_wrap()` (tenacity retry decorator).
 
-**`google_api.py`** (36 lines) — Synchronous Google Sheets wrapper. Reads `Accounts!A2:AQ`. Uses a sync HTTP client inside async code — blocks the event loop during Sheets API calls. Not a correctness bug, but a latency risk during syncs.
+**`google_api.py`** (36 lines) — Async Google Sheets wrapper. `get_accounts()` is async via `loop.run_in_executor(None, ...)` — no longer blocks event loop.
 
 **Migration scripts** (`migration_season3.py`, `migration_season4.py`) — One-time scripts run via SSH tunnel. Already applied to production; do not re-run. `mongo_scripts.py` is a standalone reward calculator.
 
@@ -94,6 +93,5 @@ mongo_scripts.py       ]  reward calculation, run locally
 
 ## Security Notes (open issues)
 
-- `client_secret.json` (Google service account key) is committed in the repo directory — gitignored but present; needs `git filter-branch` / BFG to remove from history.
-- Bot token hardcoded in `main.py` line 30 as fallback when `BOT_TOKEN` env var is unset.
-- Old test bot token on line 29 (commented out) also visible in source.
+- `client_secret.json` (Google service account key) is gitignored and confirmed NOT in git history.
+- Bot token loaded from `BOT_TOKEN` env var — raises `RuntimeError` if unset (hardcoded fallback removed in code review).

@@ -72,7 +72,6 @@ Appropriate role home screen FSM state (`superadmin_start`, `admin_start`, `oper
 
 ## Modules
 
-- [[modules/main]] — handler
-- [[modules/mongodb]] — `is_superadmin`, `is_admin`, `is_operator`, `is_support`, `is_gamer`, `add_gamer`, `update_gamer`
-- [[modules/operator_controller]] — `main()` for operators
+- [[modules/main]] — handler (operator_controller removed Sprint A; role chain: superadmin → support → gamer)
+- [[modules/mongodb]] — `is_superadmin`, `is_support`, `is_gamer`, `add_gamer`, `update_gamer`
 - [[modules/texts]], [[modules/markups]], [[modules/state]]

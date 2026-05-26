@@ -535,7 +535,7 @@ async def gamer_pickup_account(message: types.Message, state: FSMContext):
     if not eligible:
         sent = await utils.safe_wrap(lambda: message.answer(
             texts.gamer_pickup_ineligible.format(reason=utils.escape(reason)),
-            parse_mode="MarkdownV2"
+            reply_markup=markups.start, parse_mode="MarkdownV2"
         ))
         await utils.clean_messages(bot, db, message.from_user.id)
         await utils.add_message_history(db, sent)
@@ -545,7 +545,7 @@ async def gamer_pickup_account(message: types.Message, state: FSMContext):
 
     if account is None:
         sent = await utils.safe_wrap(lambda: message.answer(
-            texts.gamer_pickup_no_accounts, parse_mode="MarkdownV2"
+            texts.gamer_pickup_no_accounts, reply_markup=markups.start, parse_mode="MarkdownV2"
         ))
         await utils.clean_messages(bot, db, message.from_user.id)
         await utils.add_message_history(db, sent)
@@ -559,7 +559,7 @@ async def gamer_pickup_account(message: types.Message, state: FSMContext):
             login=utils.escape(account.get("login", "")),
             password=utils.escape(account.get("password", "")),
         ),
-        parse_mode="MarkdownV2"
+        reply_markup=markups.start, parse_mode="MarkdownV2"
     ))
     await utils.clean_messages(bot, db, message.from_user.id)
     await utils.add_message_history(db, sent)
@@ -583,7 +583,8 @@ async def gamer_release_account_prompt(message: types.Message, state: FSMContext
 
     if not releasable:
         sent = await utils.safe_wrap(lambda: message.answer(
-            texts.gamer_release_account_no_accounts, parse_mode="MarkdownV2"
+            texts.gamer_release_account_no_accounts,
+            reply_markup=markups.start, parse_mode="MarkdownV2"
         ))
         await utils.clean_messages(bot, db, message.from_user.id)
         await utils.add_message_history(db, sent)
@@ -608,9 +609,10 @@ async def gamer_release_account_prompt(message: types.Message, state: FSMContext
 
 @dp.callback_query_handler(lambda c: c.data and (c.data.startswith("release_select:") or c.data == "release_back"), state=TelegramState.gamer_release_account)
 async def gamer_release_account_select(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer("")  # MUST be first
+
     if callback_query.data == "release_back":
         await TelegramState.start.set()
-        await callback_query.answer("")
         await utils.safe_wrap(lambda: bot.send_message(
             callback_query.from_user.id, texts.gamer_start,
             reply_markup=markups.start, parse_mode="MarkdownV2", disable_web_page_preview=True
@@ -620,36 +622,42 @@ async def gamer_release_account_select(callback_query: types.CallbackQuery, stat
     account_oid_str = callback_query.data.split(":", 1)[1]
     gamer = await db.get_gamer(callback_query.from_user.id)
     if not gamer:
-        await callback_query.answer("Пользователь не найден")
         await TelegramState.start.set()
         return
 
-    # Look up account by _id to get the profile name
     account = await db.get_account_by_object_id(ObjectId(account_oid_str))
     if not account:
-        await callback_query.answer("Аккаунт не найден")
         await TelegramState.start.set()
         return
 
     profile = account["profile"]
 
-    # Mark account as pending_release in DB
     result = await db.request_account_release(profile, gamer["_id"])
-
     if result.modified_count == 0:
-        # Account already changed status between prompt and selection
-        await callback_query.answer("Аккаунт уже изменил статус, попробуйте снова")
         await TelegramState.start.set()
         return
 
+    # Trigger explicit sync to capture final points before ownership ends
+    try:
+        await synchonizer.sync_single_account(profile)
+    except Exception:
+        pass
+
     # Re-fetch to get latest state for history display
     account = await db.get_account(profile)
-    history = account.get("progress_history", [])
-    last_entries = history[-5:] if len(history) >= 5 else history
-    history_lines = "\n".join(
-        f"{utils.escape(e['synced_at'].strftime('%d.%m %H:%M'))} → {e['tower_points']} \\({'+' if e['delta'] >= 0 else ''}{e['delta']}\\)"
-        for e in last_entries
-    ) or "_нет данных_"
+
+    # Filter progress history to this gamer's own entries only
+    all_history = account.get("progress_history", [])
+    gamer_history = [e for e in all_history if e.get("gamer_id") == gamer["_id"]]
+    last_entries = gamer_history[-5:] if len(gamer_history) >= 5 else gamer_history
+    _lines = []
+    for e in last_entries:
+        date  = utils.escape(e['synced_at'].strftime('%d.%m %H:%M'))
+        tower = utils.escape(str(e['tower_points']))
+        sign  = utils.escape('+') if e['delta'] >= 0 else ''
+        delta = utils.escape(str(e['delta']))
+        _lines.append(f"{date} → {tower} \\({sign}{delta}\\)")
+    history_lines = "\n".join(_lines) or "_нет данных_"
 
     release_text = texts.support_release_request.format(
         profile=utils.escape(profile),
@@ -657,23 +665,23 @@ async def gamer_release_account_select(callback_query: types.CallbackQuery, stat
         history=history_lines
     )
 
-    # Use _id hex and dedicated button labels (not escalation labels)
+    # 3-button keyboard for support — on-demand release has deny option
     support_markup = types.InlineKeyboardMarkup(row_width=1)
     support_markup.add(
-        types.InlineKeyboardButton(buttons.release_approve, callback_data=f"release_approve:{account_oid_str}"),
-        types.InlineKeyboardButton(buttons.release_deny,    callback_data=f"release_deny:{account_oid_str}")
+        types.InlineKeyboardButton(buttons.release_pool,   callback_data=f"release_pool:{account_oid_str}"),
+        types.InlineKeyboardButton(buttons.release_finish, callback_data=f"release_finish:{account_oid_str}"),
+        types.InlineKeyboardButton(buttons.release_deny,   callback_data=f"release_deny:{account_oid_str}"),
     )
 
     support_users = await db.get_support_users()
     for su in support_users:
         try:
-            await utils.safe_wrap(lambda: bot.send_message(
+            await utils.safe_wrap(lambda su=su: bot.send_message(
                 su["id"], release_text, reply_markup=support_markup, parse_mode="MarkdownV2"
             ))
         except Exception:
             continue
 
-    await callback_query.answer("")
     await TelegramState.start.set()
     await utils.safe_wrap(lambda: bot.send_message(
         callback_query.from_user.id,
@@ -683,21 +691,35 @@ async def gamer_release_account_select(callback_query: types.CallbackQuery, stat
 
 
 # =============================================================================
-# Support — on-demand release decisions
+# Support — on-demand release decisions (pool / finish / deny)
+#           and inactivity escalation decisions (pool / finish)
 # =============================================================================
 
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith("release_approve:"), state="*")
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith("release_deny:"),    state="*")
+@dp.callback_query_handler(
+    lambda c: c.data and any(
+        c.data.startswith(p) for p in ("release_pool:", "release_finish:", "release_deny:")
+    ),
+    state="*"
+)
 async def support_release_decision(callback_query: types.CallbackQuery):
+    await callback_query.answer("")  # MUST be first
+
     if not await db.is_support(callback_query.from_user.id):
-        await callback_query.answer("Нет доступа")
+        await utils.safe_wrap(lambda: bot.send_message(
+            callback_query.from_user.id, "Нет доступа", parse_mode="MarkdownV2"
+        ))
         return
 
     action, account_oid_str = callback_query.data.split(":", 1)
     account = await db.get_account_by_object_id(ObjectId(account_oid_str))
 
-    if not account or account.get("status") != "pending_release":
-        await callback_query.answer("Запрос уже обработан")
+    # deny is only valid for on-demand releases; pool/finish work for both pending_release and escalated
+    valid_statuses = ["pending_release"] if action == "release_deny" else ["pending_release", "escalated"]
+
+    if not account or account.get("status") not in valid_statuses:
+        await utils.safe_wrap(lambda: bot.send_message(
+            callback_query.from_user.id, "Запрос уже обработан", parse_mode="MarkdownV2"
+        ))
         return
 
     profile = account["profile"]
@@ -705,17 +727,33 @@ async def support_release_decision(callback_query: types.CallbackQuery):
     gamer_id = account.get("gamer_id")
     gamer = await db.get_gamer_by_id(gamer_id) if gamer_id else None
 
-    if action == "release_approve":
-        # Release to pool — available for pickup
+    if action == "release_pool":
+        release_reason = account.get("release_request", {}).get("type", "inactivity") if account.get("release_request") else "inactivity"
+        await db.add_release_block(account["_id"], gamer_id, release_reason)
+        new_count = await db.increment_pool_release_count(gamer_id)
         await db.release_account(profile, "released", released_at=now)
+        if gamer and "id" in gamer:
+            if new_count >= 5:
+                await utils.safe_wrap(lambda: bot.send_message(
+                    gamer["id"], texts.gamer_pickup_banned, parse_mode="MarkdownV2"
+                ))
+            await utils.safe_wrap(lambda: bot.send_message(
+                gamer["id"],
+                texts.gamer_release_account_pool_approved.format(profile=utils.escape(profile)),
+                parse_mode="MarkdownV2"
+            ))
+
+    elif action == "release_finish":
+        tower_points = account.get("tower", {}).get("points", 0)
+        await db.finish_account(profile, callback_query.from_user.id, now, tower_points)
         if gamer and "id" in gamer:
             await utils.safe_wrap(lambda: bot.send_message(
                 gamer["id"],
-                texts.gamer_release_account_approved.format(profile=utils.escape(profile)),
+                texts.gamer_release_account_finished.format(profile=utils.escape(profile)),
                 parse_mode="MarkdownV2"
             ))
-    else:
-        # Deny — revert to active
+
+    else:  # release_deny — on-demand only
         await db.set_account_status(profile, "active", extra_fields={"release_request": None})
         if gamer and "id" in gamer:
             await utils.safe_wrap(lambda: bot.send_message(
@@ -724,12 +762,52 @@ async def support_release_decision(callback_query: types.CallbackQuery):
                 parse_mode="MarkdownV2"
             ))
 
-    await callback_query.answer("")
     await utils.safe_wrap(lambda: bot.send_message(
         callback_query.from_user.id,
         texts.support_release_decision_done.format(profile=utils.escape(profile)),
         parse_mode="MarkdownV2"
     ))
+
+
+# =============================================================================
+# Support / Superadmin — finished accounts list
+# =============================================================================
+
+@dp.message_handler(Text(equals=buttons.finished_accounts), state=TelegramState.support_start)
+@dp.message_handler(Text(equals=buttons.finished_accounts), state=TelegramState.superadmin_start)
+async def show_finished_accounts(message: types.Message, state: FSMContext):
+    if await db.is_superadmin(message.from_user.id):
+        home_markup = markups.superadmin_start
+    else:
+        home_markup = markups.support_start
+
+    await utils.add_message_history(db, message)
+    accounts = await db.get_finished_accounts()
+
+    if not accounts:
+        text = texts.support_finished_accounts_empty
+    else:
+        lines = [texts.support_finished_accounts_header]
+        for acc in accounts:
+            gamer_oid = acc.get("gamer_id")
+            if not gamer_oid and acc.get("ownership_history"):
+                gamer_oid = acc["ownership_history"][-1].get("gamer_id")
+            gamer = await db.get_gamer_by_id(gamer_oid) if gamer_oid else None
+            gamer_name = utils.escape(gamer.get("username", "???") if gamer else "???")
+            profile = utils.escape(acc["profile"])
+            finished_at = utils.escape(acc["finished_at"].strftime("%d.%m.%Y") if acc.get("finished_at") else "???")
+            points = utils.escape(str(acc.get("final_tower_points", "?")))
+            lines.append(texts.support_finished_accounts_item.format(
+                profile=profile, gamer_username=gamer_name,
+                finished_at=finished_at, points=points
+            ))
+        text = "".join(lines)
+
+    await utils.clean_messages(bot, db, message.from_user.id)
+    sent = await utils.safe_wrap(lambda: message.answer(
+        text, reply_markup=home_markup, parse_mode="MarkdownV2"
+    ))
+    await utils.add_message_history(db, sent)
 
 
 # =============================================================================

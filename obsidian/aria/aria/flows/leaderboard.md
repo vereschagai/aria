@@ -80,8 +80,7 @@
 `is_new_year` parameter removed — was never passed as `True`. Crown emoji is now unconditional on rank 1.
 
 ## Modules
-
-- [[modules/operator_controller]] — `__leaderboard`, `__print_leaderboard`, `__main`
+- [[modules/main]] — `__leaderboard`, `__print_leaderboard` (moved from operator_controller in Sprint A)
 - [[modules/mongodb]] — `get_all_gamers_season_points`, `get_gamers`, `get_gamer`, `get_config`
 - [[modules/texts]] — `gamer_no_leaderboard`
 - [[modules/markups]] — `back`

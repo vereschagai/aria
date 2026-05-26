@@ -11,7 +11,7 @@ All button text is in Russian. Examples: pickup button, release button, leaderbo
 
 ## Dependencies
 
-Used by [[modules/main]], [[modules/operator_controller]], [[modules/markups]].
+Used by [[modules/main]], [[modules/markups]]. (operator_controller removed Sprint A)
 
 ## Related
 

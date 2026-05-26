@@ -3,8 +3,8 @@ name: project-aria
 description: "Aria bot — full project context: what it is, stack, architecture,
   current season, deployment, and open gaps"
 type: project
-updated: 2026-05-26
-version: "3"
+updated: '"2026-05-27"'
+version: "4"
 ---
 
 # Aria Telegram Bot — Project Overview
@@ -49,10 +49,10 @@ See [[CONTEXT]] for full architecture detail. See [[DECISIONS]] for all 12 ADRs.
 ## Role Hierarchy
 
 ```
-superadmin → admin → operator → support → gamer
+superadmin → support → gamer
 ```
 
-Resolved on every `/start` and back-navigation. See [[flows/start-role-resolution]].
+Resolved on every `/start` and back-navigation. Admin and operator roles removed (Sprint A). See [[flows/start-role-resolution]].
 
 ---
 
@@ -60,12 +60,11 @@ Resolved on every `/start` and back-navigation. See [[flows/start-role-resolutio
 
 | File | Lines | Purpose |
 |---|---|---|
-| `main.py` | 929 | All handlers, FSM, role resolution, global error handler |
-| `mongodb.py` | 443 | All DB operations — `MongoDb` class |
-| `sheet_synchonizer.py` | ~173 | Sheets import — never touches `gamer_id` |
+| `main.py` | ~950 | All handlers, FSM, role resolution, global error handler |
+| `mongodb.py` | ~470 | All DB operations — `MongoDb` class |
+| `sheet_synchonizer.py` | ~173 | Sheets import — never touches `gamer_id`; new `sync_single_account()` method |
 | `progress_monitor.py` | ~172 | Inactivity warnings + support escalation |
-| `operator_controller.py` | ~110 | Leaderboard (2 queries) + role routing |
-| `state.py` | 31 | All FSM states |
+| `state.py` | 26 | All FSM states (admin/operator states removed) |
 | `google_api.py` | ~36 | Async Sheets wrapper — `run_in_executor` |
 
 See [[modules/main]], [[modules/mongodb]], [[modules/sheet_synchonizer]], [[modules/progress_monitor]].
@@ -88,10 +87,16 @@ Key S4 changes (all live):
 ## Account Status Lifecycle
 
 ```
-released → (pickup) → active → (inactivity) → escalated → (support: ❌) → inactive
-                             → (gamer 🔓) → pending_release → (support: ✅) → released
-                                                            → (support: ❌) → active
+released → (pickup) → active → (gamer 🔓) → pending_release → (support: 🔓 В пул)       → released  [+block, +count]
+                                                              → (support: 🚫 Закрыть)     → finished
+                                                              → (support: ↩️ Отклонить)   → active    [on-demand only]
+                             → (inactivity) → escalated     → (support: 🔓 В пул)        → released  [+block, +count]
+                                                              → (support: 🚫 Закрыть)     → finished
 ```
+
+**`finished`** — permanent close. No gamer can ever pick this account again. Visible in finished accounts list.
+**Gamer ban:** `gamers.pool_release_count >= 5` → gamer blocked from picking new accounts (can still play existing ones).
+**Account-gamer block:** `release_blocks` collection — gamer who released an account can never pick it again, even after another gamer releases it.
 
 See [[flows/on-demand-release]], [[flows/inactivity-escalation]], [[flows/gamer-pickup]].
 
@@ -132,15 +137,15 @@ See [[flows/on-demand-release]], [[flows/inactivity-escalation]], [[flows/gamer-
 
 ---
 
-## Known Gaps (as of 2026-05-26)
+## Known Gaps (as of 2026-05-27)
 
 | # | Gap | Notes |
 |---|---|---|
-| 1 | Support home has no "active escalations" list | Not yet implemented |
+| 1 | Support home has no "active escalations" list | Sprint D planned |
 | 2 | Sheet sync is manual | Octo+Puppeteer automation is a parallel project |
-| 3 | Test coverage partial | 36 pytest tests written and passing: test_progress_monitor, test_sheet_synchonizer, test_mongodb_eligibility, test_websocket_server. No handler/integration tests yet. |
-| 4 | `client_secret.json` git history | ✅ Confirmed clean — never committed, properly gitignored. No action needed. |
-| 5 | `main.py` is 929 lines | Phase 3 refactor planned: split into controllers |
+| 3 | ~~Test coverage partial~~ | ✅ **85 tests** passing — handler, integration, MarkdownV2 format, load, and race condition tests. `pip install mongomock` required. |
+| 4 | `client_secret.json` git history | ✅ Confirmed clean — never committed, properly gitignored |
+| 5 | `main.py` is ~950 lines | Phase 3 refactor planned: split into controllers |
 | 6 | aiogram 2.x is EOL | v3 migration is a breaking rewrite |
 | 7 | `season_picked_up` not reset between seasons | Must `$unset` in `migration_season5.py` |
 | 8 | `aiocron` possibly unused | Verify if any `@cron` decorators used |

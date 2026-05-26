@@ -21,10 +21,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_mongo_db(occupied_accounts: list):
+def _make_mongo_db(occupied_accounts: list, gamer_doc=None):
     """
     Build a minimal MongoDb-like object where check_assignment_eligibility
-    can run. The method uses self.db.accounts.find(...).to_list(None) internally.
+    can run. The method uses self.db.accounts.find(...).to_list(None) and
+    self.db.gamers.find_one(...) internally.
+
+    gamer_doc: the document returned by gamers.find_one. Defaults to None
+               (gamer not found → pool_release_count treated as 0, not banned).
     """
     # Create a bare instance without calling __init__ (avoids motor connection)
     from mongodb import MongoDb
@@ -37,6 +41,8 @@ def _make_mongo_db(occupied_accounts: list):
     cursor = MagicMock()
     cursor.to_list = AsyncMock(return_value=occupied_accounts)
     mock_inner_db.accounts.find = MagicMock(return_value=cursor)
+
+    mock_inner_db.gamers.find_one = AsyncMock(return_value=gamer_doc)
 
     return obj
 
@@ -183,3 +189,19 @@ async def test_progress_from_different_gamer_ineligible():
 
     assert eligible is False
     assert "other_owner" in reason
+
+
+@pytest.mark.asyncio
+async def test_gamer_ban_blocks_pickup():
+    """Case 8: pool_release_count >= 5 → banned, ineligible regardless of slots/progress."""
+    gamer_oid = ObjectId()
+    # Account with perfect progress — eligibility must still fail due to ban
+    accounts = [_active_account("acc1", delta=200, gamer_oid=gamer_oid)]
+    gamer_doc = {"_id": gamer_oid, "pool_release_count": 5}
+    mongo = _make_mongo_db(accounts, gamer_doc=gamer_doc)
+
+    config = {"max_accounts_per_gamer": 10, "min_progress_points": 50}
+    eligible, reason = await mongo.check_assignment_eligibility(gamer_oid, config)
+
+    assert eligible is False
+    assert "освободили" in reason

@@ -3,13 +3,47 @@ name: feedback-aria-workflow
 description: Workflow rules for the Aria project — what Claude does vs. what the
   user does, and key coding patterns to always follow
 type: feedback
-updated: 2026-05-26
-version: "3"
+updated: '"2026-05-27"'
+version: "4"
 ---
 
 # Aria Project — Workflow & Coding Rules
 
 See [[memory/project_aria|Project Overview]] for architecture context.
+
+---
+
+## Superpowers Plugin — Which Skills to Use When
+
+The Superpowers plugin provides skills that enforce quality gates. Use them as described:
+
+| Situation | Skill | When |
+|---|---|---|
+| New feature or behavior change | `superpowers:brainstorming` | BEFORE any design or implementation — full Q&A + design doc |
+| Multi-step feature with a spec | `superpowers:writing-plans` | After brainstorming approval — produces `docs/superpowers/plans/YYYY-MM-DD-*.md` |
+| Executing a plan with independent tasks | `superpowers:subagent-driven-development` | After writing-plans — dispatches fresh subagent per task with 2-stage review |
+| Any bug, test failure, unexpected behavior | `superpowers:systematic-debugging` | BEFORE proposing any fix — 4-phase: Root Cause → Pattern → Hypothesis → Implementation |
+| About to claim work is done or tests pass | `superpowers:verification-before-completion` | ALWAYS — run `python -m py_compile` + `pytest tests/ -v` and show output before claiming done |
+| Any new feature or bugfix code | `superpowers:test-driven-development` | Write failing test FIRST, watch it fail, then implement minimal code |
+
+### Aria-specific application
+
+**For new sprints (B, C, D, etc.):** `brainstorming` → `writing-plans` → `subagent-driven-development`
+
+**For bugs reported by user:** `systematic-debugging` (4-phase investigation) → `test-driven-development` (write failing test first) → `verification-before-completion` (show pytest output before reporting done)
+
+**Test infrastructure:** 85 tests passing in `tests/`. Requires `mongomock` (`pip install mongomock --break-system-packages`). New test patterns documented in `tests/conftest.py`:
+- `assert_valid_markdownv2(text)` — char-by-char MarkdownV2 validator
+- `make_fake_account()` / `make_fake_gamer()` — realistic document builders
+- `_TelegramStateMock` — mock FSM state with `async def set()` on every attribute
+
+### Critical rules from skill definitions
+
+- `callback_query.answer("")` must be the **first** await in every callback handler
+- No fix attempt without root cause investigation first (systematic-debugging Phase 1)
+- No production code without a failing test first (TDD iron law)
+- No completion claim without fresh verification output — `pytest` must have been run in the same message
+- Lambda closures in loops: `lambda x=x:` to capture by value
 
 ---
 
@@ -29,7 +63,7 @@ Do NOT push to git or deploy. Commit, push, and deploy are done manually by the 
 sent = await utils.safe_wrap(lambda: message.answer("text", reply_markup=markups.start))
 ```
 
-**Why:** Telegram API returns transient 429/5xx errors. Direct calls crash on rate limits.
+**Why:** Telegram API returns transient 429/5xx errors. Direct calls crash on rate limits. `safe_wrap` also swallows exceptions silently — which means a MarkdownV2 parse error will silently drop the message. Always check escaping when a message fails to send.
 
 **How to apply:** Every `bot.send_message`, `message.answer`, `bot.edit_message_text`, etc. must be wrapped. See [[modules/utils]].
 
@@ -73,9 +107,14 @@ account = await db.get_account_by_object_id(ObjectId(oid_str))
 texts.some_template.format(username=utils.escape(gamer["username"]))
 ```
 
-**Why:** Unescaped `_`, `*`, `[`, `.`, etc. crash MarkdownV2 rendering.
+**Special cases that MUST be escaped** (frequently missed):
+- `+` and `-` in numeric deltas: `utils.escape('+')`, `utils.escape(str(delta))`
+- `.` in dates: pass the whole formatted string through `utils.escape(date_str)`
+- Any integer or float converted to string: `utils.escape(str(number))`
 
-**How to apply:** All user-sourced strings (usernames, profile names, wallet addresses) in MarkdownV2 templates. Static strings in `texts.py` are pre-escaped. See [[modules/texts]], [[modules/utils]].
+**Why:** Unescaped `_`, `*`, `[`, `.`, `+`, `-`, etc. cause Telegram to silently reject the message. `safe_wrap` swallows the error and the message is never sent — this is how the release flow broke.
+
+**How to apply:** All user-sourced strings (usernames, profile names, wallet addresses, numbers, dates) in MarkdownV2 templates. Static strings in `texts.py` are pre-escaped. See [[modules/texts]], [[modules/utils]].
 
 ---
 
@@ -99,6 +138,8 @@ if not gamer:
 4. If accessible from multiple roles, register once per relevant state
 5. For account callbacks → ObjectId hex
 6. **Update `CLAUDE.md` + relevant `docs/` file + Obsidian vault before implementing**
+7. Write failing tests first (TDD) before implementing handler logic
+8. Run `verification-before-completion` before marking task done
 
 ---
 
@@ -110,23 +151,24 @@ After any non-trivial implementation:
 3. Update affected [[modules/]] or [[flows/]] notes
 4. Run brain-save to update session handoff in [[memory/MEMORY]]
 
-**Why:** Documented in global CLAUDE.md as mandatory workflow step. Without this, next session starts blind.
+**Why:** Without this, next session starts blind. Boot protocol reads these files first.
 
 ---
 
-## Mandatory Cowork implementation workflow
+## Mandatory Cowork implementation workflow (updated with Superpowers)
 
-Every non-trivial task must follow this sequence (from Cowork system prompt):
+Every non-trivial task must follow this sequence:
 
 1. **brain-search** — search `aria/memory/` via Obsidian MCP before starting any work
-2. **System design** — use `engineering:system-design` skill for features; skip for simple bugs
-3. **Implement** changes
-4. **Dry-test** — run `pytest tests/ -v` or equivalent check
-5. **Code review** — use `engineering:code-review` skill
-6. **Fix vault docs** — update Obsidian memory files to reflect what changed
-7. **Commit** all reviewed changes + vault update (user does the push/deploy)
+2. **brainstorming** (`superpowers:brainstorming`) — for new features; produces design doc
+3. **writing-plans** (`superpowers:writing-plans`) — produces step-by-step implementation plan
+4. **Implement** — via `subagent-driven-development` or Claude Code with TDD
+5. **verification-before-completion** — run `pytest tests/ -v`, show output
+6. **Code review** — use `engineering:code-review` skill
+7. **Fix vault docs** — update Obsidian memory files to reflect what changed
+8. **Commit** — user does the push/deploy
 
-Use Engineering plugin skills: `engineering:code-review`, `engineering:system-design`, `engineering:testing-strategy`, `engineering:documentation` as appropriate.
+For bugs: steps 1 → `systematic-debugging` → TDD → 5 → 6 → 7 → 8.
 
 **Boot protocol for every aria session:** Read `aria/memory/MEMORY.md` first, then the three linked memory files before touching any code.
 
@@ -134,6 +176,6 @@ Use Engineering plugin skills: `engineering:code-review`, `engineering:system-de
 
 ## sheet_synchonizer is credentials-only — no side effects
 
-`GoogleSheetSynchonizer.grab_accounts()` only upserts `profile`, `login`, `password`, `proxy`. It does **not** call `progress_monitor.check_all()` or trigger any downstream logic. The `progress_monitor` parameter was removed entirely.
+`GoogleSheetSynchonizer.grab_accounts()` only upserts `profile`, `login`, `password`, `proxy`. The new `sync_single_account(profile)` method is the only exception — it's called explicitly when an account enters `pending_release` to capture final points before ownership ends.
 
-**Why:** check_all was a hidden side effect inside a sync operation, making the flow hard to reason about. Progress checks are now triggered explicitly elsewhere.
+**Why:** check_all was a hidden side effect inside a sync operation. Progress checks are now triggered explicitly.

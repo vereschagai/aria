@@ -40,15 +40,15 @@ Handled in `start()`. Back/cancel from any FSM state also routes here.
 ## Dependencies
 
 - [[modules/mongodb]] — all DB calls
-- [[modules/sheet_synchonizer]] — `grab_accounts()`
+- [[modules/sheet_synchonizer]] — `grab_accounts()`, `sync_single_account()`
 - [[modules/progress_monitor]] — called indirectly via synchonizer
-- [[modules/operator_controller]] — `OperatorController.main()`
 - [[modules/state]] — all FSM state references
 - [[modules/buttons]] — all `Text(equals=...)` filter args
 - [[modules/texts]] — all message strings
 - [[modules/markups]] — all keyboard layouts
 - [[modules/utils]] — `escape()`, `clean_messages()`, `add_message_history()`
 - [[modules/google_api]] — passed to synchonizer
+- ~~operator_controller~~ — removed Sprint A; leaderboard logic absorbed into main.py
 
 ## Known Issues / Tech Debt
 

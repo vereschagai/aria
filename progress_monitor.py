@@ -113,13 +113,17 @@ class ProgressMonitor:
             }
         )
 
-        # Build escalation summary
-        history = account.get("progress_history", [])
-        last_entries = history[-5:] if len(history) >= 5 else history
-        history_lines = "\n".join(
-            f"{utils.escape(e['synced_at'].strftime('%d.%m %H:%M'))} → {e['tower_points']} \\({'+' if e['delta'] >= 0 else ''}{e['delta']}\\)"
-            for e in last_entries
-        ) or "_нет данных_"
+        # Build escalation summary — only this gamer's own entries
+        gamer_history = [e for e in account.get("progress_history", []) if e.get("gamer_id") == gamer_id]
+        last_entries = gamer_history[-5:] if len(gamer_history) >= 5 else gamer_history
+        _hist_lines = []
+        for e in last_entries:
+            date  = utils.escape(e['synced_at'].strftime('%d.%m %H:%M'))
+            tower = utils.escape(str(e['tower_points']))
+            sign  = utils.escape('+') if e['delta'] >= 0 else ''
+            delta = utils.escape(str(e['delta']))
+            _hist_lines.append(f"{date} → {tower} \\({sign}{delta}\\)")
+        history_lines = "\n".join(_hist_lines) or "_нет данных_"
 
         escalation_text = texts.support_escalation.format(
             profile=utils.escape(profile),
@@ -133,30 +137,25 @@ class ProgressMonitor:
         account_oid = str(account["_id"])
         markup = InlineKeyboardMarkup(row_width=1)
         markup.add(
-            InlineKeyboardButton(
-                buttons.support_progress_possible,
-                callback_data=f"support_progress:{account_oid}"
-            ),
-            InlineKeyboardButton(
-                buttons.support_no_progress,
-                callback_data=f"support_noprogress:{account_oid}"
-            )
+            InlineKeyboardButton(buttons.release_pool,   callback_data=f"release_pool:{account_oid}"),
+            InlineKeyboardButton(buttons.release_finish, callback_data=f"release_finish:{account_oid}"),
         )
+        # No deny button for inactivity escalations
 
         pending_proof = account.get("pending_proof")
 
         for support_user in support_users:
             try:
-                await utils.safe_wrap(lambda: self.bot.send_message(
-                    support_user["id"],
+                await utils.safe_wrap(lambda su=support_user: self.bot.send_message(
+                    su["id"],
                     escalation_text,
                     reply_markup=markup,
                     parse_mode="MarkdownV2"
                 ))
                 # Forward gamer proof if any
                 if pending_proof:
-                    await utils.safe_wrap(lambda: self.bot.forward_message(
-                        support_user["id"],
+                    await utils.safe_wrap(lambda su=support_user: self.bot.forward_message(
+                        su["id"],
                         pending_proof["chat_id"],
                         pending_proof["message_id"]
                     ))

@@ -259,10 +259,15 @@ class MongoDb:
         """
         Returns (eligible: bool, reason: str).
         Gamer is eligible for a new account when:
-          1. Total occupied slots (active + escalated + pending_release) < max_accounts_per_gamer
-          2. All strictly active accounts: last progress_history entry belongs to this gamer
+          1. pool_release_count < 5 (not banned from pickup)
+          2. Total occupied slots (active + escalated + pending_release) < max_accounts_per_gamer
+          3. All strictly active accounts: last progress_history entry belongs to this gamer
              AND delta >= min_progress_points. Escalated/pending_release are exempt.
         """
+        gamer = await self.db.gamers.find_one({"_id": gamer_object_id})
+        if gamer and gamer.get("pool_release_count", 0) >= 5:
+            return False, "Вы освободили слишком много аккаунтов. Взять новый нельзя."
+
         occupied_accounts = await self.db.accounts.find({
             "gamer_id": gamer_object_id,
             "status": {"$in": ["active", "escalated", "pending_release"]}
@@ -296,16 +301,18 @@ class MongoDb:
         Returns the assigned account document or None if pool is empty.
         """
         now = datetime.utcnow()
+        blocked_ids = await self.get_gamer_release_block_ids(gamer_object_id)
 
         p1 = await self.db.accounts.find({
             "status": "released",
             "ownership_history.gamer_id": gamer_object_id,
+            "_id": {"$nin": blocked_ids},
         }).sort("tower.points", DESCENDING).to_list(None)
 
         p1_ids = {a["_id"] for a in p1}
         remaining = await self.db.accounts.find({
             "status": "released",
-            "_id": {"$nin": list(p1_ids)},
+            "_id": {"$nin": list(p1_ids) + blocked_ids},
         }).to_list(None)
 
         prev_owner_ids = [
@@ -364,6 +371,72 @@ class MongoDb:
 
 
     # -------------------------------------------------------------------------
+    # Release blocks — permanent (account, gamer) block within a season
+    # -------------------------------------------------------------------------
+
+    async def add_release_block(self, account_id: ObjectId, gamer_id: ObjectId, reason: str):
+        """Upsert (account_id, gamer_id) pair into release_blocks. Silently ignores duplicate."""
+        try:
+            await self.db.release_blocks.insert_one({
+                "account_id": account_id,
+                "gamer_id": gamer_id,
+                "blocked_at": datetime.utcnow(),
+                "reason": reason,
+            })
+        except Exception:
+            pass  # duplicate key = already blocked
+
+    async def get_gamer_release_block_ids(self, gamer_id: ObjectId) -> list:
+        """Return list of account ObjectIds this gamer is blocked from picking."""
+        docs = await self.db.release_blocks.find(
+            {"gamer_id": gamer_id}, {"account_id": 1}
+        ).to_list(None)
+        return [d["account_id"] for d in docs]
+
+    async def increment_pool_release_count(self, gamer_id: ObjectId) -> int:
+        """Increment pool_release_count for gamer. Returns the NEW count."""
+        result = await self.db.gamers.find_one_and_update(
+            {"_id": gamer_id},
+            {"$inc": {"pool_release_count": 1}},
+            return_document=ReturnDocument.AFTER,
+            projection={"pool_release_count": 1},
+        )
+        return result.get("pool_release_count", 1) if result else 1
+
+    async def finish_account(self, profile: str, support_id: int, now: datetime, tower_points: int):
+        """Permanently close an account (status=finished). Clears gamer_id, removes release metadata."""
+        # Close the open ownership entry (released_at: None) if one exists.
+        # Separate call because array_filters requires the open-entry condition in the match,
+        # which would make the second $set on top-level fields a no-op when already closed.
+        await self.db.accounts.update_one(
+            {"profile": profile, "ownership_history.released_at": None},
+            {"$set": {"ownership_history.$[last].released_at": now}},
+            array_filters=[{"last.released_at": None}],
+        )
+        await self.db.accounts.update_one(
+            {"profile": profile},
+            {
+                "$set": {
+                    "status": "finished",
+                    "finished_at": now,
+                    "finished_by": support_id,
+                    "final_tower_points": tower_points,
+                    "gamer_id": None,
+                },
+                "$unset": {"release_request": "", "escalated_at": ""},
+            }
+        )
+
+    async def get_finished_accounts(self) -> list:
+        """Return all finished accounts sorted by finished_at descending."""
+        return await self.db.accounts.find(
+            {"status": "finished"},
+            {"profile": 1, "gamer_id": 1, "finished_at": 1, "finished_by": 1,
+             "final_tower_points": 1, "ownership_history": 1}
+        ).sort("finished_at", DESCENDING).to_list(None)
+
+
+    # -------------------------------------------------------------------------
     # Messages
     # -------------------------------------------------------------------------
 
@@ -414,3 +487,8 @@ class MongoDb:
 
         # Messages — read/written on every user interaction
         await self.db.messages.create_index("id", unique=True)
+
+        # Release blocks — permanent per-season block for (account, gamer) pair
+        await self.db.release_blocks.create_index(
+            [("account_id", ASCENDING), ("gamer_id", ASCENDING)], unique=True
+        )
