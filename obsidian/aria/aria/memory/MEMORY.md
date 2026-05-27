@@ -46,34 +46,28 @@ Full guide with Aria-specific application → [[memory/feedback_aria_workflow]]
 Last session: 2026-05-27
 Last brain-save: 2026-05-27
 
-**Current focus: Sprint B — code review done, tests written. Ready for user to commit.**
+**Current focus: Sprint B — fully done. Ready for user to commit.**
 
 **Sprint B status: code written + reviewed + tested (NOT YET COMMITTED — user commits manually)**
 
-**Code review findings fixed in this session:**
-- `safe_wrap` bug: all 3 invite handlers were calling `await safe_wrap(coroutine)` instead of `await safe_wrap(lambda: ...)` — fixed
-- Missing message cleanup (add_history → clean → send → add_history) in all 3 invite handlers — fixed
-- Missing `disable_web_page_preview=True` in all 3 invite handlers — fixed
-- Missing `ensure_invite_token` for dynamically-added superadmins in `admin_added` handler — fixed
+**All Sprint B changes in working tree (unstaged vs committed Sprint B):**
+- `main.py` — safe_wrap lambda fix, message cleanup, disable_web_page_preview, ensure_invite_token for new superadmins, `gamer_referral_link` now uses UUID token instead of raw user_id
+- `tests/test_invite_tokens.py` — untracked (16 tests, not yet committed)
+- `buttons.py`, `markups.py`, `texts.py`, `mongodb.py` — Sprint B changes vs HEAD
 
-**Design question pending (needs user decision before Sprint C):**
-- Old `gamer_referral_link` (buttons.referral = "💸 Реферальная программа") still generates `?start={user_id}` integer links
-- `/start` now only does UUID lookup — old integer referral links silently stop crediting referrers
-- Two invite-type buttons on gamer home is confusing UX
-- Options: (a) remove old referral button, (b) update it to use UUID tokens, (c) add integer fallback in /start
-
-**Test suite state: 15 tests in test_invite_tokens.py (up from 11)**
+**Test suite state: 16 tests in test_invite_tokens.py**
 - 5 DB method tests (ensure/get token, TOCTOU race)
-- 2 /start handler tests (real handler calls, not inline simulations)
+- 2 /start handler tests (real handler calls)
 - 2 admin_added handler tests (support + superadmin token creation)
 - 6 invite link handler tests (3 roles × callable check + cleanup check)
+- 1 gamer_referral_link test (confirms UUID token used, not raw user_id)
 
-**Working tree changes (unstaged vs committed Sprint B):**
-- `main.py` — safe_wrap lambda fix, message cleanup, disable_web_page_preview, ensure_invite_token for new superadmins
-- `tests/test_invite_tokens.py` — untracked (not yet committed)
-- `buttons.py`, `markups.py`, `texts.py`, `mongodb.py` — all have Sprint B changes vs HEAD
+**Design decision made (2026-05-27):**
+- Old `gamer_referral_link` (buttons.referral) updated to use UUID tokens (option b)
+- Both referral buttons on gamer home now use the same UUID mechanism
+- The `bot.get_me()` call in that handler replaced with `BOT_USERNAME` global
 
-**Sprint order:** Sprint A ✅ → Sprint E ✅ → Sprint E tests ✅ → **B (code ✅, review ✅, tests ✅, commit pending)** → C → D
+**Sprint order:** Sprint A ✅ → Sprint E ✅ → Sprint E tests ✅ → **B (✅ complete, commit pending)** → C → D
 
 **Critical warnings for next session:**
 - **Never run `git commit` — user commits manually after reviewing**

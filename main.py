@@ -418,8 +418,8 @@ async def admin_remove_confirmed(message: types.Message, state: FSMContext):
 
 @dp.message_handler(Text(equals=buttons.referral), state=TelegramState.start)
 async def gamer_referral_link(message: types.Message, state: FSMContext):
-    me = await bot.get_me()
-    referral_link = f'https://t.me/{me.username}?start={message.from_user.id}'
+    token = await db.ensure_invite_token(message.from_user.id, "gamer")
+    referral_link = f'https://t.me/{BOT_USERNAME}?start={token["uuid"]}'
 
     await TelegramState.referral.set()
     sent_message = await utils.safe_wrap(lambda: message.answer(

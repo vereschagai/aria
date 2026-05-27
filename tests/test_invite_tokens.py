@@ -409,3 +409,36 @@ async def test_support_invite_link_handler_performs_message_cleanup():
     assert mock_add.call_count == 2
     second_call_msg = mock_add.call_args_list[1][0][1]
     assert second_call_msg is sent_msg
+
+
+# -- gamer_referral_link handler (buttons.referral) uses UUID token -----------
+
+@pytest.mark.asyncio
+async def test_gamer_referral_link_handler_uses_uuid_token():
+    """buttons.referral handler must use ensure_invite_token (not raw user_id) for the link."""
+    import main
+    from unittest.mock import patch, AsyncMock, MagicMock
+
+    fake_token = {"uuid": "referral-uuid-abc", "issuer_id": 777, "role_type": "gamer"}
+    mock_db = MagicMock()
+    mock_db.ensure_invite_token = AsyncMock(return_value=fake_token)
+
+    sent_msg = MagicMock()
+    message = MagicMock()
+    message.from_user.id = 777
+    message.answer = AsyncMock(return_value=sent_msg)
+
+    state = MagicMock()
+    state.set = AsyncMock(return_value=None)
+
+    with patch.object(main, "db", mock_db), \
+         patch.object(main, "BOT_USERNAME", "aria_test_bot"), \
+         patch("utils.add_message_history", AsyncMock()), \
+         patch("utils.clean_messages", AsyncMock()):
+        await main.gamer_referral_link(message, state)
+
+    mock_db.ensure_invite_token.assert_called_once_with(777, "gamer")
+    sent_text = message.answer.call_args[0][0]
+    assert "referral-uuid-abc" in sent_text
+    # Must NOT contain the raw integer user_id as the start parameter
+    assert "?start=777" not in sent_text
