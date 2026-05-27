@@ -25,6 +25,8 @@ from progress_monitor import ProgressMonitor
 from config import config
 import utils
 
+safe_wrap = utils.safe_wrap
+
 # Telegram
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 if not BOT_TOKEN:
@@ -48,6 +50,8 @@ ARIA_SHEET_ID = os.environ.get('ARIA_SHEET_ID')
 if not ARIA_SHEET_ID:
     raise RuntimeError("ARIA_SHEET_ID environment variable is required")
 
+BOT_USERNAME = ""  # populated at startup via bot.get_me()
+
 bot = Bot(token=BOT_TOKEN)
 Bot.set_current(bot)
 
@@ -64,11 +68,16 @@ synchonizer = GoogleSheetSynchonizer(db, api, progress_monitor=progress_monitor)
 
 
 async def init():
+    global BOT_USERNAME
+    bot_me = await bot.get_me()
+    BOT_USERNAME = bot_me.username
+
     await db.ensure_indexes()
 
     for superadmin in superadmins:
         if not await db.is_superadmin(superadmin['id']):
             await db.add_superadmin({ "id": superadmin['id'], "username": superadmin['name'] })
+        await db.ensure_invite_token(superadmin['id'], "superadmin")
 
     db_config = await db.get_config()
     for field in config:
@@ -126,8 +135,10 @@ async def start(message: types.Message, state: FSMContext):
             referral = None
 
             parts = message.text.split(' ')
-            if len(parts) == 2 and parts[1].isdigit():
-                referral = int(parts[1])
+            if len(parts) == 2:
+                token_doc = await db.get_invite_token_by_uuid(parts[1])
+                if token_doc:
+                    referral = token_doc["issuer_id"]
 
             if referral == message.from_user.id or (not await db.is_gamer({ "id": referral }) and not await db.is_superadmin(referral) and not await db.is_support(referral)):
                 referral = None
@@ -239,6 +250,17 @@ async def superadmin_feed_send(message: types.Message):
     await utils.safe_wrap(lambda: message.answer(texts.superadmin_feed_sent, reply_markup=markups.superadmin_start))
 
 
+@dp.message_handler(Text(equals=buttons.superadmin_invite_link, ignore_case=True),
+                    state=TelegramState.superadmin_start)
+async def superadmin_invite_link(message: types.Message):
+    token = await db.ensure_invite_token(message.from_user.id, "superadmin")
+    link = f"t.me/{BOT_USERNAME}?start={token['uuid']}"
+    await utils.add_message_history(db, message)
+    await utils.clean_messages(bot, db, message.from_user.id)
+    sent = await safe_wrap(lambda: message.answer(texts.invite_link.format(link=link), disable_web_page_preview=True))
+    await utils.add_message_history(db, sent)
+
+
 # =============================================================================
 # Superadmin — add/remove superadmins and support
 # =============================================================================
@@ -266,6 +288,7 @@ async def admin_added(message: types.Message, state: FSMContext):
         await TelegramState.superadmin_start.set()
         if not await db.is_superadmin(message.contact.user_id):
             await db.add_superadmin({"id": message.contact.user_id, "username": message.contact.full_name})
+            await db.ensure_invite_token(message.contact.user_id, "superadmin")
             await utils.safe_wrap(lambda: message.answer(texts.superadmin_added.format(name=message.contact.full_name), reply_markup=markups.superadmin_start))
         else:
             await utils.safe_wrap(lambda: message.answer(texts.superadmin_add_exists.format(name=message.contact.full_name), reply_markup=markups.superadmin_start))
@@ -274,6 +297,7 @@ async def admin_added(message: types.Message, state: FSMContext):
         await TelegramState.superadmin_start.set()
         if not await db.is_support(message.contact.user_id):
             await db.add_support(message.contact)
+            await db.ensure_invite_token(message.contact.user_id, "support")
             await utils.safe_wrap(lambda: message.answer(texts.admin_added.format(contragent="Поддержка", name=message.contact.full_name), reply_markup=markups.superadmin_start))
         else:
             await utils.safe_wrap(lambda: message.answer(texts.admin_add_exists.format(contragent="Поддержка", name=message.contact.full_name), reply_markup=markups.superadmin_start))
@@ -406,6 +430,18 @@ async def gamer_referral_link(message: types.Message, state: FSMContext):
     await utils.add_message_history(db, message)
     await utils.clean_messages(bot, db, message.from_user.id)
     await utils.add_message_history(db, sent_message)
+
+
+@dp.message_handler(Text(equals=buttons.gamer_invite_friend, ignore_case=True),
+                    state=TelegramState.start)
+async def gamer_invite_link(message: types.Message):
+    token = await db.ensure_invite_token(message.from_user.id, "gamer")
+    link = f"t.me/{BOT_USERNAME}?start={token['uuid']}"
+    await utils.add_message_history(db, message)
+    await utils.clean_messages(bot, db, message.from_user.id)
+    sent = await safe_wrap(lambda: message.answer(texts.invite_link.format(link=link), disable_web_page_preview=True))
+    await utils.add_message_history(db, sent)
+
 
 @dp.message_handler(Text(equals=buttons.account), state=TelegramState.start)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.address)
@@ -807,6 +843,17 @@ async def show_finished_accounts(message: types.Message, state: FSMContext):
     sent = await utils.safe_wrap(lambda: message.answer(
         text, reply_markup=home_markup, parse_mode="MarkdownV2"
     ))
+    await utils.add_message_history(db, sent)
+
+
+@dp.message_handler(Text(equals=buttons.support_invite_link, ignore_case=True),
+                    state=TelegramState.support_start)
+async def support_invite_link(message: types.Message):
+    token = await db.ensure_invite_token(message.from_user.id, "support")
+    link = f"t.me/{BOT_USERNAME}?start={token['uuid']}"
+    await utils.add_message_history(db, message)
+    await utils.clean_messages(bot, db, message.from_user.id)
+    sent = await safe_wrap(lambda: message.answer(texts.invite_link.format(link=link), disable_web_page_preview=True))
     await utils.add_message_history(db, sent)
 
 

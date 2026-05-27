@@ -166,11 +166,19 @@ Every non-trivial task must follow this sequence:
 5. **verification-before-completion** — run `pytest tests/ -v`, show output
 6. **Code review** — use `engineering:code-review` skill
 7. **Fix vault docs** — update Obsidian memory files to reflect what changed
-8. **Commit** — user does the push/deploy
+8. **Commit** — **user does this manually** after reviewing memory + tests
 
 For bugs: steps 1 → `systematic-debugging` → TDD → 5 → 6 → 7 → 8.
 
 **Boot protocol for every aria session:** Read `aria/memory/MEMORY.md` first, then the three linked memory files before touching any code.
+
+---
+
+**Commit workflow (CRITICAL — established 2026-05-27):**
+- Claude does NOT commit during implementation or after code review
+- Write code + tests → confirm tests pass → tell user → user commits manually
+- After user commits: brain-save to update Obsidian memory with final state
+- This is a hard rule: `git commit`, `git push`, `npm run deploy-*` are user-only operations
 
 ---
 

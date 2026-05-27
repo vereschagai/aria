@@ -44,35 +44,41 @@ Full guide with Aria-specific application → [[memory/feedback_aria_workflow]]
 ## Session Handoff
 
 Last session: 2026-05-27
-Interrupted task: clean exit — all tests passing, brain-save complete
 Last brain-save: 2026-05-27
 
-**Current focus: Sprint B (invite token system)**
+**Current focus: Sprint B — code review done, tests written. Ready for user to commit.**
 
-Test suite state: **85 tests, all passing**
-- `tests/test_mongodb_eligibility.py` — 1 (ban check)
-- `tests/test_mongodb_sprint_e.py` — 8 (new Sprint E methods)
-- `tests/test_gamer_handlers.py` — 18 (pickup/release/account-screen handlers)
-- `tests/test_message_format.py` — 14 (MarkdownV2 + message length)
-- `tests/test_load_and_race.py` — 8 (25-account load + race conditions)
-- `tests/test_progress_monitor.py` — existing (inactivity escalation)
-- `tests/conftest.py` — shared: `assert_valid_markdownv2()`, `make_fake_account()`, `make_fake_gamer()`
+**Sprint B status: code written + reviewed + tested (NOT YET COMMITTED — user commits manually)**
 
-Key design decisions (Sprint E — complete ✅):
-- Two support actions: "🔓 В пул" (`release_pool`) and "🚫 Закрыть навсегда" (`release_finish`)
-- On-demand: 3 buttons (pool + finish + deny); Inactivity: 2 buttons (pool + finish, no deny)
-- New `release_blocks` collection: compound unique `(account_id, gamer_id)`
-- `gamers.pool_release_count >= 5` → gamer banned from pickup
-- Progress history in notifications: filtered by `entry.gamer_id == gamer._id`
-- `sync_single_account` triggered when account enters `pending_release`
-- `add_release_block` catches bare `Exception` (not just DuplicateKeyError); timestamp = `blocked_at`
+**Code review findings fixed in this session:**
+- `safe_wrap` bug: all 3 invite handlers were calling `await safe_wrap(coroutine)` instead of `await safe_wrap(lambda: ...)` — fixed
+- Missing message cleanup (add_history → clean → send → add_history) in all 3 invite handlers — fixed
+- Missing `disable_web_page_preview=True` in all 3 invite handlers — fixed
+- Missing `ensure_invite_token` for dynamically-added superadmins in `admin_added` handler — fixed
 
-**Sprint order:** Sprint A ✅ → Sprint E ✅ → Sprint E tests ✅ → **B** → C → D
+**Design question pending (needs user decision before Sprint C):**
+- Old `gamer_referral_link` (buttons.referral = "💸 Реферальная программа") still generates `?start={user_id}` integer links
+- `/start` now only does UUID lookup — old integer referral links silently stop crediting referrers
+- Two invite-type buttons on gamer home is confusing UX
+- Options: (a) remove old referral button, (b) update it to use UUID tokens, (c) add integer fallback in /start
+
+**Test suite state: 15 tests in test_invite_tokens.py (up from 11)**
+- 5 DB method tests (ensure/get token, TOCTOU race)
+- 2 /start handler tests (real handler calls, not inline simulations)
+- 2 admin_added handler tests (support + superadmin token creation)
+- 6 invite link handler tests (3 roles × callable check + cleanup check)
+
+**Working tree changes (unstaged vs committed Sprint B):**
+- `main.py` — safe_wrap lambda fix, message cleanup, disable_web_page_preview, ensure_invite_token for new superadmins
+- `tests/test_invite_tokens.py` — untracked (not yet committed)
+- `buttons.py`, `markups.py`, `texts.py`, `mongodb.py` — all have Sprint B changes vs HEAD
+
+**Sprint order:** Sprint A ✅ → Sprint E ✅ → Sprint E tests ✅ → **B (code ✅, review ✅, tests ✅, commit pending)** → C → D
 
 **Critical warnings for next session:**
+- **Never run `git commit` — user commits manually after reviewing**
 - Always read `aria/memory/MEMORY.md` + three linked files BEFORE any code work
 - Use Superpowers skills as described in [[memory/feedback_aria_workflow]]
-- `sheet_synchonizer` is credentials-only — `sync_single_account` is the only new method
 - Sprint A is complete — do not re-implement admin/operator anything
 - Sprint E: `release_approve` callback removed — old bots/clients with stale inline buttons will get "already processed" message
 - Before running `pytest tests/ -v`, install: `pip install mongomock --break-system-packages`

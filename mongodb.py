@@ -1,7 +1,11 @@
 from datetime import datetime
+from uuid import uuid4
+
+from typing import Optional
 
 from bson import ObjectId
 from pymongo import DESCENDING, ASCENDING, ReturnDocument
+from pymongo.errors import DuplicateKeyError
 import motor.motor_asyncio
 
 
@@ -435,6 +439,28 @@ class MongoDb:
              "final_tower_points": 1, "ownership_history": 1}
         ).sort("finished_at", DESCENDING).to_list(None)
 
+    # Invite tokens
+
+    async def ensure_invite_token(self, issuer_id: int, role_type: str) -> dict:
+        """Find token by issuer_id; create with uuid4 if missing. Always returns token doc."""
+        existing = await self.db.invite_tokens.find_one({"issuer_id": issuer_id})
+        if existing:
+            return existing
+        doc = {
+            "uuid": str(uuid4()),
+            "issuer_id": issuer_id,
+            "role_type": role_type,
+            "created_at": datetime.utcnow(),
+        }
+        try:
+            await self.db.invite_tokens.insert_one(doc)
+        except DuplicateKeyError:
+            return await self.db.invite_tokens.find_one({"issuer_id": issuer_id})
+        return doc
+
+    async def get_invite_token_by_uuid(self, uuid_str: str) -> Optional[dict]:
+        """Return token doc or None."""
+        return await self.db.invite_tokens.find_one({"uuid": uuid_str})
 
     # -------------------------------------------------------------------------
     # Messages
@@ -492,3 +518,7 @@ class MongoDb:
         await self.db.release_blocks.create_index(
             [("account_id", ASCENDING), ("gamer_id", ASCENDING)], unique=True
         )
+
+        # invite_tokens: uuid (unique), issuer_id (unique)
+        await self.db.invite_tokens.create_index("uuid", unique=True)
+        await self.db.invite_tokens.create_index("issuer_id", unique=True)

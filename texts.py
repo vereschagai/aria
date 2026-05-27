@@ -328,3 +328,5 @@ support_release_request = '''
 support_release_decision_done = '''
 ✅ Принято\. Аккаунт *{profile}* обновлён\.
 '''
+
+invite_link = "Ваша реферальная ссылка:\n\nhttps://{link}"
