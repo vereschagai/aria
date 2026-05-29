@@ -9,9 +9,9 @@ Aria is a Telegram bot for a play-to-earn gaming guild (Goldalf Guild, game: Ari
 │                           Telegram                                 │
 │   Users interact via keyboard buttons, inline buttons,             │
 │   phone contact shares, and /start deep-links                      │
-└────────────────────────────┬───────────────────────────────────────┘
-                             │ HTTPS long-polling
-┌────────────────────────────▼───────────────────────────────────────┐
+└────────────────────────┬───────────────────────────────────────────┘
+                         │ HTTPS long-polling
+┌────────────────────────▼───────────────────────────────────────────┐
 │                        aiogram 2.x bot                             │
 │                                                                    │
 │  ┌───────────────────────────────────────────────────────────────┐ │

@@ -21,5 +21,6 @@ class TelegramState(StatesGroup):
     support_remove = State()
     support_remove_confirm = State()
     admin_add_support = State()
+    support_dashboard = State()
 
     gamer_release_account = State()

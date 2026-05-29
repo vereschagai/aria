@@ -3,8 +3,8 @@ name: feedback-aria-workflow
 description: Workflow rules for the Aria project — what Claude does vs. what the
   user does, and key coding patterns to always follow
 type: feedback
-updated: '"2026-05-27"'
-version: "4"
+updated: 2026-05-28
+version: "8"
 ---
 
 # Aria Project — Workflow & Coding Rules
@@ -32,10 +32,11 @@ The Superpowers plugin provides skills that enforce quality gates. Use them as d
 
 **For bugs reported by user:** `systematic-debugging` (4-phase investigation) → `test-driven-development` (write failing test first) → `verification-before-completion` (show pytest output before reporting done)
 
-**Test infrastructure:** 85 tests passing in `tests/`. Requires `mongomock` (`pip install mongomock --break-system-packages`). New test patterns documented in `tests/conftest.py`:
-- `assert_valid_markdownv2(text)` — char-by-char MarkdownV2 validator
-- `make_fake_account()` / `make_fake_gamer()` — realistic document builders
-- `_TelegramStateMock` — mock FSM state with `async def set()` on every attribute
+**Test infrastructure:** ~130 test functions across `tests/` (sprint F + test fixes). Requires `mongomock` (`pip install mongomock pytest pytest-asyncio --break-system-packages`). Key test patterns:
+- `assert_valid_markdownv2(text)` — char-by-char MarkdownV2 validator (conftest.py)
+- `make_fake_account()` / `make_fake_gamer()` — realistic document builders (conftest.py)
+- `_TelegramStateMock` / `_AsyncState` / `_ts()` — mock FSM state (defined locally in each test file)
+- **`safe_wrap` spy pattern**: Use `async def _fake_safe_wrap(fn): return await fn()` + `AsyncMock(side_effect=_fake_safe_wrap)`. **NEVER** `AsyncMock(side_effect=lambda fn: fn())` for tests that rely on side-effects of nested async calls (e.g. `captured_markups`). The sync lambda returns the inner coroutine without awaiting it — `fake_send` never runs.
 
 ### Critical rules from skill definitions
 
@@ -80,7 +81,11 @@ await utils.add_message_history(db, sent)         # track outgoing
 
 **Why:** Without cleanup, old messages pile up and create confusing UX.
 
-**How to apply:** Every screen transition — no exceptions.
+**How to apply:** Every screen transition — no exceptions. This includes handlers that change FSM state (like `support_dashboard_open`). The `start()` function branches for superadmin and support MUST also call `clean_messages` before sending the home screen.
+
+**Sprint D fix:** `start()` superadmin/support branches never called `clean_messages` (pre-existing bug). Fixed — both branches now call `utils.clean_messages` before sending the home message.
+
+**When sending multiple messages in one handler** (e.g. dashboard: reply-keyboard message + inline-keyboard message): track ALL sent messages with `add_message_history`, not just the last one.
 
 ---
 
@@ -179,6 +184,15 @@ For bugs: steps 1 → `systematic-debugging` → TDD → 5 → 6 → 7 → 8.
 - Write code + tests → confirm tests pass → tell user → user commits manually
 - After user commits: brain-save to update Obsidian memory with final state
 - This is a hard rule: `git commit`, `git push`, `npm run deploy-*` are user-only operations
+
+---
+
+## Mandatory: All Docs/Specs/Plans → Obsidian Vault
+
+- Every superpowers spec written to `docs/superpowers/specs/` must ALSO be written to the Obsidian vault at `aria/docs/specs/YYYY-MM-DD-<topic>-design.md` and cross-linked from `[[NEXT]]` or the relevant flow note.
+- Every superpowers plan written to `docs/superpowers/plans/` must ALSO be written to `aria/docs/plans/YYYY-MM-DD-<topic>-plan.md` and linked from `[[NEXT]]`.
+- Run `brain-search` before writing any plan or spec to gather current project context.
+- The `docs/` folder in the codebase is being deprecated — all documentation lives in the Obsidian vault going forward.
 
 ---
 

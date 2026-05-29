@@ -7,6 +7,10 @@ from bson import ObjectId
 from pymongo import DESCENDING, ASCENDING, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 import motor.motor_asyncio
+import time as _time
+
+_leaderboard_cache: dict = {}   # keys: "data" (list), "ts" (float)
+LEADERBOARD_TTL_SECONDS = 60
 
 
 class MongoDb:
@@ -115,21 +119,27 @@ class MongoDb:
         """
         Returns [{_id: gamer_ObjectId, total: int}, ...] sorted by total descending.
         Used by the leaderboard — one aggregation over the accounts collection instead
-        of N per-gamer queries.
+        of N per-gamer queries. Result is cached for LEADERBOARD_TTL_SECONDS seconds.
         """
+        now = _time.time()
+        if _leaderboard_cache.get("ts") and now - _leaderboard_cache["ts"] < LEADERBOARD_TTL_SECONDS:
+            return _leaderboard_cache["data"]
+
         pipeline = [
-            { "$unwind": "$progress_history" },
-            { "$match": {
-                "progress_history.delta": { "$gt": 0 },
-                "progress_history.gamer_id": { "$ne": None }
+            {"$unwind": "$progress_history"},
+            {"$match": {
+                "progress_history.delta": {"$gt": 0},
+                "progress_history.gamer_id": {"$ne": None}
             }},
-            { "$group": {
+            {"$group": {
                 "_id": "$progress_history.gamer_id",
-                "total": { "$sum": "$progress_history.delta" }
+                "total": {"$sum": "$progress_history.delta"}
             }},
-            { "$sort": { "total": -1 } }
+            {"$sort": {"total": -1}}
         ]
-        return await self.db.accounts.aggregate(pipeline).to_list(None)
+        result = await self.db.accounts.aggregate(pipeline).to_list(None)
+        _leaderboard_cache.update({"data": result, "ts": _time.time()})
+        return result
 
     async def get_gamer_season_points(self, gamer_object_id: ObjectId) -> int:
         """
@@ -191,6 +201,29 @@ class MongoDb:
 
     async def get_escalated_accounts(self):
         return await self.db.accounts.find({ "status": "escalated" }).to_list(None)
+
+    async def get_open_support_tasks(self) -> list:
+        """
+        All accounts awaiting support action (escalated + pending_release),
+        with gamer info joined via $lookup. Escalated accounts come before pending_release.
+        Each item has a 'gamer' key (joined gamer doc, or None if no gamer_id).
+        """
+        pipeline = [
+            {"$match": {"status": {"$in": ["escalated", "pending_release"]}}},
+            {"$lookup": {
+                "from": "gamers",
+                "localField": "gamer_id",
+                "foreignField": "_id",
+                "as": "gamer_arr"
+            }},
+            {"$addFields": {"gamer": {"$arrayElemAt": ["$gamer_arr", 0]}}},
+            {"$project": {"gamer_arr": 0}},
+            {"$sort": {"status": 1}}   # "escalated" < "pending_release" lexically → escalated first
+        ]
+        results = await self.db.accounts.aggregate(pipeline).to_list(None)
+        for r in results:
+            r.setdefault("gamer", None)
+        return results
 
     async def set_account_status(self, profile: str, status: str, extra_fields: dict = None):
         set_fields = {"status": status}

@@ -3,8 +3,8 @@ name: reference-aria-codebase
 description: Pointers to key locations in the Aria codebase — where to find/add
   things, env vars, infrastructure details
 type: reference
-updated: '"2026-05-27"'
-version: "4"
+updated: 2026-05-27
+version: "5"
 ---
 
 # Aria Codebase — Reference Pointers

@@ -3,8 +3,8 @@ name: project-aria
 description: "Aria bot — full project context: what it is, stack, architecture,
   current season, deployment, and open gaps"
 type: project
-updated: '"2026-05-27"'
-version: "4"
+updated: 2026-05-28
+version: "7"
 ---
 
 # Aria Telegram Bot — Project Overview
@@ -60,8 +60,8 @@ Resolved on every `/start` and back-navigation. Admin and operator roles removed
 
 | File | Lines | Purpose |
 |---|---|---|
-| `main.py` | ~950 | All handlers, FSM, role resolution, global error handler |
-| `mongodb.py` | ~470 | All DB operations — `MongoDb` class |
+| `main.py` | ~920 | All handlers, FSM, role resolution, global error handler |
+| `mongodb.py` | ~480 | All DB operations — `MongoDb` class |
 | `sheet_synchonizer.py` | ~173 | Sheets import — never touches `gamer_id`; new `sync_single_account()` method |
 | `progress_monitor.py` | ~172 | Inactivity warnings + support escalation |
 | `state.py` | 26 | All FSM states (admin/operator states removed) |
@@ -111,8 +111,7 @@ See [[flows/on-demand-release]], [[flows/inactivity-escalation]], [[flows/gamer-
 | `max_accounts_per_gamer` | 10 | Max simultaneous accounts |
 | `inactivity_escalation_days` | 3 | Calendar days before escalation |
 | `support_handle` | `@goldalfsupp` | Configurable — stored in `config` collection |
-
----
+| `required_chat_id` | `None` | **Sprint C** — Telegram group/channel ID (negative int). When set, `/start` checks membership before role resolution. `None` = gate disabled. Editable via superadmin config editor. |
 
 ## Environment Variables (all required — raise RuntimeError if unset)
 
@@ -137,18 +136,22 @@ See [[flows/on-demand-release]], [[flows/inactivity-escalation]], [[flows/gamer-
 
 ---
 
-## Known Gaps (as of 2026-05-27)
+## Known Gaps (as of 2026-05-28)
 
 | # | Gap | Notes |
 |---|---|---|
-| 1 | Support home has no "active escalations" list | Sprint D planned |
+| 1 | ~~Support home has no "active escalations" list~~ | ✅ **Sprint D** — "📋 Задачи" dashboard, paginated, inline KB, DM buttons. support + superadmin (read-only). |
 | 2 | Sheet sync is manual | Octo+Puppeteer automation is a parallel project |
-| 3 | ~~Test coverage partial~~ | ✅ **85 tests** passing — handler, integration, MarkdownV2 format, load, and race condition tests. `pip install mongomock` required. |
+| 3 | ~~Test coverage partial~~ | ✅ **110 tests** (9 Sprint F tests added in `tests/test_sprint_f.py`). `pip install mongomock pytest pytest-asyncio` required. |
 | 4 | `client_secret.json` git history | ✅ Confirmed clean — never committed, properly gitignored |
-| 5 | `main.py` is ~950 lines | Phase 3 refactor planned: split into controllers |
+| 5 | `main.py` is ~920 lines | Phase 3 refactor planned: split into controllers |
 | 6 | aiogram 2.x is EOL | v3 migration is a breaking rewrite |
 | 7 | `season_picked_up` not reset between seasons | Must `$unset` in `migration_season5.py` |
 | 8 | `aiocron` possibly unused | Verify if any `@cron` decorators used |
 | 9 | Superadmin ID hardcoded in `main.py` | By design — requires code change to add second superadmin |
+| 10 | ~~Gamer account screen overflows at 15-20 accounts~~ | ✅ **Sprint F** — paginated 10/page, compact format, inline nav (`account_page_nav`). 4096-char limit no longer reachable. |
+| 11 | ~~N+1 in `get_open_support_tasks`~~ | ✅ **Sprint F** — replaced with single `$lookup` aggregation pipeline. |
+| 12 | ~~Sequential role resolution in `start()`~~ | ✅ **Sprint F** — parallel via `asyncio.gather()`. |
+| 13 | ~~Leaderboard aggregation runs on every tap~~ | ✅ **Sprint F** — 60s in-memory TTL cache (`_leaderboard_cache`). |
 
 See [[REVIEW]] for full implementation gap analysis.

@@ -1,6 +1,24 @@
 import pytest
 import mongomock
 
+# -- TelegramState stub (prevents current_state error in tests that call handlers) --
+
+class _AsyncState:
+    """Stands in for any aiogram State object: .set() returns a real coroutine."""
+    async def set(self):
+        pass
+
+
+class _TelegramStateMock:
+    """Every attribute access returns a fresh _AsyncState."""
+    def __getattr__(self, name):
+        return _AsyncState()
+
+
+def _ts():
+    return _TelegramStateMock()
+
+
 # -- async facade over synchronous mongomock ----------------------------------
 
 class _AsyncCollection:
@@ -118,6 +136,7 @@ def _make_start_db(issuer_id=555, token_doc=None):
     mock_db.is_superadmin = AsyncMock(return_value=False)
     mock_db.is_support = AsyncMock(return_value=False)
     mock_db.is_gamer = is_gamer
+    mock_db.get_config = AsyncMock(return_value={"required_chat_id": None})
     mock_db.get_invite_token_by_uuid = AsyncMock(return_value=token_doc)
     mock_db.add_gamer = AsyncMock(return_value=None)
     mock_db.update_gamer = AsyncMock(return_value=None)
@@ -154,6 +173,7 @@ async def test_start_handler_resolves_uuid_referral():
     state.set_data = AsyncMock(return_value=None)
 
     with patch.object(main, "db", mock_db), \
+         patch.object(main, "TelegramState", _ts()), \
          patch("utils.add_message_history", AsyncMock()), \
          patch("utils.clean_messages", AsyncMock()):
         await main.start(message, state)
@@ -210,7 +230,8 @@ async def test_add_support_handler_creates_invite_token():
     state = MagicMock()
     state.get_state = AsyncMock(return_value="TelegramState:admin_add_support")
 
-    with patch.object(main, "db", mock_db):
+    with patch.object(main, "db", mock_db), \
+         patch.object(main, "TelegramState", _ts()):
         await main.admin_added(message, state)
 
     mock_db.add_support.assert_called_once_with(contact)
@@ -239,7 +260,8 @@ async def test_add_superadmin_handler_creates_invite_token():
     state = MagicMock()
     state.get_state = AsyncMock(return_value="TelegramState:superadmin_add_admin")
 
-    with patch.object(main, "db", mock_db):
+    with patch.object(main, "db", mock_db), \
+         patch.object(main, "TelegramState", _ts()):
         await main.admin_added(message, state)
 
     mock_db.add_superadmin.assert_called_once()
@@ -433,12 +455,14 @@ async def test_gamer_referral_link_handler_uses_uuid_token():
 
     with patch.object(main, "db", mock_db), \
          patch.object(main, "BOT_USERNAME", "aria_test_bot"), \
+         patch.object(main, "TelegramState", _ts()), \
          patch("utils.add_message_history", AsyncMock()), \
          patch("utils.clean_messages", AsyncMock()):
         await main.gamer_referral_link(message, state)
 
     mock_db.ensure_invite_token.assert_called_once_with(777, "gamer")
     sent_text = message.answer.call_args[0][0]
-    assert "referral-uuid-abc" in sent_text
+    # The UUID is passed through utils.escape() which escapes '-' to '\-'
+    assert "referral\\-uuid\\-abc" in sent_text
     # Must NOT contain the raw integer user_id as the start parameter
     assert "?start=777" not in sent_text

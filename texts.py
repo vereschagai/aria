@@ -117,6 +117,12 @@ admin_removed = '''
 {contragent} {username} удален!
 '''
 
+gamer_not_in_chat = '''
+Чтобы играть, ты должен быть участником нашего сообщества\.
+
+Вступи в группу и нажми /start снова\.
+'''
+
 gamer_only_invite_access = '''
 Доступ к боту – *только по приглашению\!*
 Возьмите ссылку у того, кто Вас пригласил 🙃
@@ -178,6 +184,20 @@ gamer_account = '''
 *Всего баллов:* {balance}
 {accounts_table}
 *Получить аккаунты ➡️ {support_handle}*
+'''
+
+gamer_account_page_header = '''\
+*Все о Вашем аккаунте:*
+
+*Ваш реферал:* {referral}
+*Ваши рефералы:* {referral_count}
+*Адрес для выплат:* {address}
+
+*Всего баллов:* {balance}
+
+*Получить аккаунты ➡️ {support_handle}*
+
+📋 *Аккаунты \({page_num}/{total_pages}\):*
 '''
 
 gamer_change_address = '''
@@ -330,3 +350,9 @@ support_release_decision_done = '''
 '''
 
 invite_link = "Ваша реферальная ссылка:\n\nhttps://{link}"
+
+# --- Sprint D: support dashboard ---
+
+support_dashboard_empty = '''
+📋 *Нет открытых задач\.* Всё спокойно\!
+'''

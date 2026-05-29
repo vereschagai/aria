@@ -1,6 +1,6 @@
 # Season 3 — System Design
 
-This document records the design decisions made for Season 3 and how they evolved into the current implementation. It is the canonical reference for *why* things work the way they do. For *what* is implemented, see [CLAUDE.md](../CLAUDE.md), [docs/data-model.md](data-model.md), and [docs/flows.md](flows.md).
+This document records the design decisions made for Season 3 and how they evolved into the current implementation. It is the canonical reference for *why* things work the way they do. For *what* is implemented, see CLAUDE.md in the codebase and [[data-model]], [[flows]].
 
 ---
 

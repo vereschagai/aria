@@ -165,9 +165,6 @@ One document per game account. Created/updated by `GoogleSheetSynchonizer.grab_a
 
 > `pending_proof` and `release_request` are **sparse** — only present when relevant. Both are `$unset` (fully removed) when `release_account()` is called.
 
-```json
-```
-
 ### Field reference
 
 | Field | Type | Notes |
@@ -324,6 +321,7 @@ All methods in `mongodb.py`. Arguments shown as types; all are async.
 | `check_assignment_eligibility(gamer_oid, config)` | Returns `(bool, reason_str)`. Conditions: slot count + progress check with gamer_id ownership guard. |
 | `pickup_account(gamer_oid)` | Atomic find-and-assign. Priority 1: previously owned. Priority 2: inactive-previous-owner or no owner. Returns assigned doc or `None`. |
 | `mark_gamer_season_active(gamer_oid)` | Sets `season_picked_up=True`. Idempotent. |
+| `get_open_support_tasks()` | Returns `escalated` + `pending_release` accounts with gamer info joined, escalated first. |
 
 ### Support
 | Method | Notes |

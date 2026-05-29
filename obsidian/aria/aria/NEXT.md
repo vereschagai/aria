@@ -1,9 +1,9 @@
 # NEXT — Pre-Launch Feature Sprint
 
-> Last updated: 2026-05-26. Sprint A completed 2026-05-26. Sprint E designed 2026-05-26.
+> Last updated: 2026-05-28. Sprint A completed 2026-05-26. Sprint E designed 2026-05-26.
 > Full design rationale in [[memory/MEMORY]] session handoff.
 >
-> Execution order: Sprint A (done) → Sprint E (in progress) → B → C → D.
+> Execution order: Sprint A (done) → Sprint E (in progress) → B → C → D → F.
 > Implementation workflow per task: brain-search → (design if feature) → implement → dry-test → code review → update docs → commit.
 
 ---
@@ -52,7 +52,7 @@ See full design: [[flows/on-demand-release]]
 | E8 | Rewrite `support_release_decision`: handle `release_pool`, `release_finish`, `release_deny` callbacks | main.py | ✅ |
 | E9 | Update `progress_monitor.py` escalation: filter progress by gamer_id, 2-button markup (no deny) | progress_monitor.py | ✅ |
 | E10 | Add new texts + buttons for pool/finish/deny flow | texts.py, buttons.py | ✅ |
-| E11 | Add \"📋 Закрытые аккаунты\" button + handler | main.py, buttons.py, markups.py, texts.py | ✅ |
+| E11 | Add "📋 Закрытые аккаунты" button + handler | main.py, buttons.py, markups.py, texts.py | ✅ |
 
 ---
 
@@ -74,51 +74,84 @@ See full design: [[flows/on-demand-release]]
 - `add_release_block` catches bare `Exception` (not just `DuplicateKeyError`) — timestamp field is `blocked_at`
 - MarkdownV2 validator allows `*_~` bare (formatting markers), requires `+-./!()[]{}#=|>` escaped
 
-## Sprint B — Invite Token System
+## Sprint B — Invite Token System ✅ COMPLETE (commit pending)
 
 Replace raw Telegram IDs in `?start=` links with persistent UUID tokens stored in MongoDB.
-Each inviter (superadmin, support, gamer) has exactly one token.
+Each inviter (superadmin, support, gamer) has exactly one token. Old `gamer_referral_link` updated to use UUID token too.
 
 **New collection:** `invite_tokens { uuid: String (unique), issuer_id: Int, role_type: "superadmin"|"support"|"gamer", created_at: DateTime }`
 
 | # | Task | Files | Status |
 |---|---|---|---|
-| B1 | Add `invite_tokens` collection index (`uuid` unique) to `ensure_indexes()` | mongodb.py | ⬜ |
-| B2 | Add MongoDb methods: `ensure_invite_token(issuer_id, role_type)`, `get_invite_token_by_uuid(uuid)` | mongodb.py | ⬜ |
-| B3 | On bot startup: call `ensure_invite_token(SUPERADMIN_ID, "superadmin")` | main.py | ⬜ |
-| B4 | Replace referral validity check with UUID lookup | main.py | ⬜ |
-| B5 | Superadmin home: "🔗 Ссылка для приглашения" → `t.me/<bot>?start=<uuid>` | main.py, buttons.py, markups.py, texts.py | ⬜ |
-| B6 | In `add_support` flow: call `ensure_invite_token(contact.user_id, "support")` | main.py | ⬜ |
-| B7 | Support home: "🔗 Пригласить игрока" button | main.py, buttons.py, markups.py, texts.py | ⬜ |
-| B8 | Gamer home: "👥 Пригласить друга" button | main.py, buttons.py, markups.py, texts.py | ⬜ |
+| B1 | Add `invite_tokens` collection index (`uuid` unique, `issuer_id` unique) to `ensure_indexes()` | mongodb.py | ✅ |
+| B2 | Add MongoDb methods: `ensure_invite_token(issuer_id, role_type)`, `get_invite_token_by_uuid(uuid)` | mongodb.py | ✅ |
+| B3 | On bot startup: call `ensure_invite_token(SUPERADMIN_ID, "superadmin")` | main.py | ✅ |
+| B4 | Replace referral validity check with UUID lookup | main.py | ✅ |
+| B5 | Superadmin home: "🔗 Ссылка для приглашения" → `t.me/<bot>?start=<uuid>` | main.py, buttons.py, markups.py, texts.py | ✅ |
+| B6 | In `add_support` flow: call `ensure_invite_token(contact.user_id, "support")` | main.py | ✅ |
+| B7 | Support home: "🔗 Пригласить игрока" button | main.py, buttons.py, markups.py, texts.py | ✅ |
+| B8 | Gamer home: "👥 Пригласить друга" button + UUID referral link | main.py, buttons.py, markups.py, texts.py | ✅ |
 
----
+**Tests:** `tests/test_invite_tokens.py` — 16 tests (DB methods, /start handler, admin_added, invite link handlers, gamer_referral_link)
 
-## Sprint C — Chat Membership Gate
+**⚠️ NOT YET COMMITTED — user commits manually**
+
+## Sprint C — Chat Membership Gate ✅ COMPLETE (commit pending)
 
 Optional bot membership check against guild chat. Config key: `required_chat_id` (null = disabled). Fails open.
+Gate fires before role resolution — applies to ALL users (superadmins, support, gamers).
 
 | # | Task | Files | Status |
 |---|---|---|---|
-| C1 | Add `required_chat_id: null` to config seed | config.py | ⬜ |
-| C2 | In gamer join flow: check `get_chat_member` if `required_chat_id` set; fail open on exceptions | main.py | ⬜ |
-| C3 | Add `texts.gamer_not_in_chat` | texts.py | ⬜ |
-| C4 | Superadmin config screen: set required chat via forwarded message | main.py, texts.py | ⬜ |
+| C1 | Add `required_chat_id: None` to config seed | config.py | ✅ |
+| C2 | In `/start`: check `get_chat_member` for ALL users if `required_chat_id` set; fail open on exceptions; blocks `left/kicked/banned` | main.py | ✅ |
+| C3 | Add `texts.gamer_not_in_chat` | texts.py | ✅ |
+| C4 | Config editor handles negative integers via `_is_valid_int()` (try/except) — replaces broken `lstrip('-').isdigit()` | main.py | ✅ |
 
----
+**Tests:** `tests/test_membership_gate.py` — 10 tests (blocked ×3, allowed ×4, fail-open, disabled ×2, config editor ×4)
 
-## Sprint D — Support Dashboard
+**⚠️ NOT YET COMMITTED — user commits manually**
+
+## Sprint D — Support Dashboard ✅ COMPLETE (commit pending)
 
 Central screen for open escalations and release requests with inline action + DM buttons.
 
 | # | Task | Files | Status |
 |---|---|---|---|
-| D1 | Add `get_open_support_tasks()` — query accounts with `status: {$in: ["escalated", "pending_release"]}` | mongodb.py | ⬜ |
-| D2 | Add `support_dashboard` FSM state | state.py | ⬜ |
-| D3 | Build dashboard message: "🚨 Эскалации" + "⏳ Запросы на выход" sections, inline action + DM buttons | main.py | ⬜ |
-| D4 | Add "📋 Задачи" button to support home | main.py, buttons.py, markups.py, texts.py | ⬜ |
-| D5 | Wire dashboard buttons to existing callback handlers | main.py | ⬜ |
-| D6 | Add "💬 DM" inline button to escalation notifications in `progress_monitor._escalate()` | progress_monitor.py | ⬜ |
+| D1 | `get_open_support_tasks()` — escalated + pending_release with gamer info joined | mongodb.py | ✅ |
+| D2 | `support_dashboard` FSM state + `support_tasks` button + markups + empty text | state.py, buttons.py, markups.py, texts.py | ✅ |
+| D3 | `_build_dashboard_page()` + `support_dashboard_open` + `dashboard_paginate` | main.py | ✅ |
+| D4 | "📋 Задачи" button on support home + superadmin home (read-only for SA) | main.py, markups.py | ✅ |
+| D5 | Existing `release_pool/finish/deny` callbacks work from dashboard (state="*") | main.py | ✅ (no change needed) |
+| D6 | DM URL button in `_escalate()` + in `gamer_release_account_select` notification | progress_monitor.py, main.py | ✅ |
+
+**Code review fixes:** inline KB cleared on empty-tasks paginate; message tracking added to `support_dashboard_open`; `start()` clean_messages gap fixed for support/superadmin branches.
+**16 tests** in `tests/test_sprint_d.py`. NOT YET COMMITTED — user commits manually.
+
+---
+
+## Sprint F — Gamer Scale & Performance ✅ COMPLETE (commit pending)
+
+Design approved 2026-05-28. Spec: [[docs/specs/2026-05-28-sprint-f-gamer-scale-design|Sprint F Spec]].
+Plan: [[docs/plans/2026-05-28-sprint-f-gamer-scale-plan|Sprint F Plan]].
+
+| # | Task | Files | Status |
+|---|---|---|---|
+| F1 | Paginated gamer account screen (10/page, compact format, inline nav) | `main.py`, `texts.py` | ✅ |
+| F2 | Paginated release account selector (10/page, inline nav) | `main.py` | ✅ |
+| F3 | `get_open_support_tasks` → single `$lookup` aggregation | `mongodb.py` | ✅ |
+| F4 | Parallel role resolution in `start()` via `asyncio.gather` | `main.py` | ✅ |
+| F5 | Leaderboard TTL cache (60s, in-memory) | `mongodb.py` | ✅ |
+
+**Sprint F changes in working tree (on top of B+C+D):**
+- `mongodb.py` — `get_open_support_tasks` uses `$lookup` pipeline; `get_all_gamers_season_points` has 60s TTL cache (`_leaderboard_cache`, `LEADERBOARD_TTL_SECONDS`)
+- `main.py` — `ACCOUNT_PAGE_SIZE=10`, `RELEASE_PAGE_SIZE=10` (lines 30–31); `_build_account_page()` (line 150); `_build_release_page()` (line 231); `account_page_nav` callback (line 713); `release_page_nav` callback (line 882); `asyncio.gather` role resolution (line 297)
+- `texts.py` — `gamer_account_page_header` template added
+- `tests/test_sprint_f.py` — 9 tests (F1 × 3, F2 × 1, F3 × 2, F5 × 2)
+- `tests/test_sprint_d.py` — `aggregate()` method added to `_AsyncCollection` (compatible with new `$lookup` in `get_open_support_tasks`)
+
+**⚠️ NOT YET COMMITTED — user commits manually**
+**⚠️ User must also run: `rm -rf /Users/ivan/Work/aria/docs` (docs/ folder deprecated — content migrated to Obsidian vault)**
 
 ---
 

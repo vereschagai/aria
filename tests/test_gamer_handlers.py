@@ -670,10 +670,13 @@ async def test_account_screen_shows_active_emoji():
     bot = _make_bot()
     msg = _make_msg()
 
+    state = MagicMock()
+    state.update_data = AsyncMock(return_value=None)
+
     with patch.object(main, "db", db), patch.object(main, "bot", bot), patch.object(
         main, "TelegramState", _ts()
     ):
-        await main.gamer_account(msg, MagicMock())
+        await main.gamer_account(msg, state)
 
     text = msg.answer.call_args[0][0]
     assert "✅" in text

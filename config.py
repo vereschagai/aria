@@ -9,4 +9,7 @@ config = {
 
     # Support
     "support_handle": "@goldalfsupp", # Telegram handle shown to gamers for account requests
+
+    # Season 4: community membership gate
+    "required_chat_id": None,           # Telegram chat/channel ID (negative int); None = gate disabled
 }

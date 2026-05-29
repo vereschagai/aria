@@ -2,7 +2,7 @@
 
 All conversation flows in the Aria Telegram bot. Each flow is described by: entry trigger, state transitions, DB operations, and messages sent.
 
-For the full FSM state map see [CLAUDE.md](../CLAUDE.md). For data model see [data-model.md](data-model.md).
+For the full FSM state map see CLAUDE.md in the codebase. For data model see [[data-model]].
 
 ---
 
@@ -104,7 +104,16 @@ Support users receive **push notifications** for two event types:
 Both arrive as inline keyboard messages. Support does not need to navigate to any screen.
 
 ### Support home
-`support_start` — currently only shows the Leaderboard button. No proactive actions implemented beyond receiving push messages.
+`support_start` — shows Leaderboard button and "📋 Задачи" dashboard button.
+
+### Support dashboard
+`support_start` → tap "📋 Задачи" → `support_dashboard`
+- Calls `db.get_open_support_tasks()` — returns all `escalated` + `pending_release` accounts with gamer info
+- Shows paginated inline keyboard (5 tasks per page)
+- Support sees action buttons (🔓 release, 🚫 finish, ↩️ deny) + 💬 DM button
+- Superadmin sees DM-only view (no action buttons)
+- Pagination via `dash_page:{n}` callbacks (edits message in-place)
+- Back button returns to role home
 
 ---
 
@@ -193,6 +202,7 @@ On account selected:
 3. Builds `texts.support_release_request` message with inline keyboard:
    - ✅ Разрешить освобождение → `release_approve:<account._id hex>`
    - ❌ Отклонить → `release_deny:<account._id hex>`
+   - 💬 DM → `tg://user?id={gamer_tg_id}`
 4. Sends to **all support users**
 5. Confirms to gamer: `texts.gamer_release_account_sent`
 6. Returns gamer to `start`
@@ -233,6 +243,7 @@ For each account: status=active, gamer_id != null
     │           3. send to all support users with inline keyboard:
     │              ✅ Прогресс возможен → support_progress:<account._id hex>
     │              ❌ Прогресс невозможен → support_noprogress:<account._id hex>
+    │              💬 DM → tg://user?id={gamer_tg_id}
     │           4. forward pending_proof if any
     │           5. notify gamer: texts.gamer_escalated
     │

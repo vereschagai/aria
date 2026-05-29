@@ -141,6 +141,8 @@ class ProgressMonitor:
             InlineKeyboardButton(buttons.release_finish, callback_data=f"release_finish:{account_oid}"),
         )
         # No deny button for inactivity escalations
+        if gamer_tg_id:
+            markup.add(InlineKeyboardButton("💬 DM", url=f"tg://user?id={gamer_tg_id}"))
 
         pending_proof = account.get("pending_proof")
 

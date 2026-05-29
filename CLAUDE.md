@@ -6,6 +6,20 @@ file is updated first — treat it as the source of truth over any older comment
 
 ---
 
+## Documentation
+
+All project documentation has been migrated to the Obsidian vault at `aria/docs/`. The index note is at `aria/docs/_index`. Key docs:
+
+- `aria/docs/architecture` — system overview and design decisions
+- `aria/docs/data-model` — MongoDB schema and method reference
+- `aria/docs/flows` — all conversation flows
+- `aria/docs/adding-features` — step-by-step guide for new features
+- `aria/docs/season3-system-design` — Season 3 ADR
+- `aria/docs/season4-system-design` — Season 4 ADR
+- `aria/docs/plans/` — implementation plans
+
+---
+
 ## Workflow
 
 | Role | Tool |
@@ -107,6 +121,7 @@ TelegramState
 ├── operator_start
 │
 ├── support_start
+│   └── support_dashboard               (paginated inline-keyboard dashboard; back → support_start)
 │
 └── start                               (gamer home)
     ├── referral                        (showing referral link)
@@ -133,7 +148,7 @@ TelegramState
 
 | File | Purpose |
 |---|---|
-| `mongodb.py` | `MongoDb` class — all async database operations. One method per logical action. `ensure_indexes()` called at startup. See [docs/data-model.md](docs/data-model.md) for full schema. |
+| `mongodb.py` | `MongoDb` class — all async database operations. One method per logical action. `ensure_indexes()` called at startup. See `aria/docs/data-model` in the Obsidian vault for full schema. Key Sprint D method: `get_open_support_tasks()` — returns `escalated` + `pending_release` accounts with gamer info joined, escalated first. |
 
 ### Controllers
 
@@ -180,7 +195,7 @@ TelegramState
 
 ## Data model
 
-Full schema in [docs/data-model.md](docs/data-model.md). Summary below.
+Full schema in `aria/docs/data-model` in the Obsidian vault. Summary below.
 
 ### `admin`
 Superadmins and admins. `superadmin: true` distinguishes them.
@@ -250,7 +265,7 @@ Tower column format: `points;rank;floor` (three semicolon-separated integers). `
 
 ## Season 3 system
 
-See [docs/season3-system-design.md](docs/season3-system-design.md) for original design decisions.
+See `aria/docs/season3-system-design` in the Obsidian vault for original design decisions.
 
 ### Scoring
 
@@ -274,7 +289,7 @@ days_inactive = (today_utc - baseline.date()).days
 
 ## Season 4 system
 
-See [docs/season4-system-design.md](docs/season4-system-design.md) for full ADR.
+See `aria/docs/season4-system-design` in the Obsidian vault for full ADR.
 
 ### Account pickup — instant auto-assign
 
@@ -366,7 +381,7 @@ if not gamer:
 3. Register in `main.py` with `@dp.message_handler(Text(equals=buttons.X), state=TelegramState.Y)`, or inside `OperatorController.init_handlers()`.
 4. If accessible from multiple roles, register once per relevant state.
 5. For account lookups from callbacks, use ObjectId hex (see pattern above).
-6. **Update CLAUDE.md and the relevant doc in `docs/` before implementing.**
+6. **Update CLAUDE.md and the relevant doc in the Obsidian vault (`aria/docs/`) before implementing.**
 
 ---
 
@@ -375,6 +390,6 @@ if not gamer:
 | # | Gap | File | Notes |
 |---|---|---|---|
 | 1 | `inactivity_day_buffer_hours` config field is dead | `config.py`, `mongodb.py` | Inactivity uses calendar days; field kept for backwards compat |
-| 2 | Support home has no "active escalations" list | `markups.py`, `main.py` | Design doc mentioned this; not yet implemented |
+| 2 | ~~Support home has no "active escalations" list~~ | ✅ **Sprint D** — "📋 Задачи" dashboard added to support and superadmin homes (`main.py`, `markups.py`, `mongodb.py`) | |
 | 3 | Sheet sync is manual | `sheet_synchonizer.py` | Automation via Octo+Puppeteer is a separate future project |
 | 4 | No automated tests | — | Test strategy TBD |

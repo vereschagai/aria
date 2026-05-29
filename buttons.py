@@ -33,6 +33,8 @@ release_deny   = "↩️ Отклонить"
 
 finished_accounts = "📋 Закрытые аккаунты"
 
+support_tasks = "📋 Задачи"
+
 superadmin_invite_link = "🔗 Ссылка для приглашения"
 support_invite_link = "🔗 Пригласить игрока"
 gamer_invite_friend = "👥 Пригласить друга"

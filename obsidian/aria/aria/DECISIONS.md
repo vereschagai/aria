@@ -158,3 +158,26 @@ Accounts whose last owner is still active this season are excluded from Priority
 **Decision:** `__leaderboard` in `OperatorController` resolves all gamer ObjectIds in one batch: `db.gamers.find({"_id": {"$in": oids}})`. Combined with the single `get_all_gamers_season_points()` aggregation, total leaderboard cost is 2 queries regardless of guild size.
 
 **Consequences:** Leaderboard latency is O(1) in guild size. Direct `db.db.gamers` collection access used in the controller (same pattern as `mongo_scripts.py`).
+
+
+## Sprint C: Community membership gate — all users blocked before role resolution
+
+**Decision:** `/start` handler checks Telegram group membership (via `bot.get_chat_member`) before any role resolution (superadmin/support/gamer branches). Gate applies to ALL users including superadmins.
+**Reason:** Per user spec (C2) — gate must block newcomers AND existing gamers. Placing it before role resolution is the simplest single checkpoint that covers every path.
+**Config:** `required_chat_id` in MongoDB `config` collection (negative integer, `None` = disabled). Editable via superadmin config editor.
+**Fail-open:** Any API exception from `get_chat_member` is swallowed — user is never blocked due to Telegram API errors.
+**Blocked statuses:** `left`, `kicked`, `banned`. All other statuses (`member`, `administrator`, `creator`, `restricted`) pass through.
+**Rollback:** Set `required_chat_id` to `None` via config editor → gate disabled immediately, no deploy needed.
+
+## Sprint B/C: UUID invite tokens replace integer referral links
+
+**Decision:** `invite_tokens` collection maps `uuid` (UUID4 string) → `issuer_id` (Telegram user ID) + `role_type`. `/start?start=<uuid>` looks up token instead of treating the param as a raw integer user_id.
+**Reason:** Raw integer user IDs in deep links are a security/enumeration risk. UUID4 tokens are unguessable. Also fixes the old `gamer_referral_link` handler which was still generating broken `?start={user_id}` links.
+**Idempotent:** `ensure_invite_token(issuer_id, role_type)` creates-or-returns; TOCTOU DuplicateKeyError handled by re-fetch.
+**Rollback:** Revert `/start` handler to `parts[1].isdigit()` check and drop `invite_tokens` collection.
+
+## Config editor: int() try/except replaces isdigit() for integer fields
+
+**Decision:** `_is_valid_int(s)` uses `try: int(s) / except ValueError` instead of `s.lstrip('-').isdigit()`.
+**Reason:** `lstrip('-').isdigit()` incorrectly accepted `"--1"` (strips all leading dashes → `"1"` passes isdigit, but `int("--1")` raises ValueError). `required_chat_id` values are large negative integers so this path is now exercised in production.
+**Rollback:** Not recommended — old pattern is strictly worse.

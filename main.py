@@ -26,6 +26,9 @@ from config import config
 import utils
 
 safe_wrap = utils.safe_wrap
+PAGE_SIZE = 5
+ACCOUNT_PAGE_SIZE = 10
+RELEASE_PAGE_SIZE = 10
 
 # Telegram
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -88,6 +91,174 @@ async def init():
 asyncio.run_coroutine_threadsafe(init(), dp.loop)
 
 
+async def _build_dashboard_page(tasks: list, page: int, viewer_is_superadmin: bool):
+    """
+    Build (text, InlineKeyboardMarkup) for one page of the support dashboard.
+
+    tasks: list of dicts from db.get_open_support_tasks() — each has:
+        _id (ObjectId), profile (str), status (str), gamer (dict|None)
+    page: 0-indexed page number (clamped to valid range automatically)
+    viewer_is_superadmin: True → omit action buttons, show DM only
+    """
+    total = len(tasks)
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    page_tasks = tasks[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]
+
+    lines = [f"📋 *Открытые задачи* — стр\\. {page + 1}/{total_pages}\n"]
+
+    markup = types.InlineKeyboardMarkup(row_width=4)
+
+    for local_i, task in enumerate(page_tasks):
+        n = page * PAGE_SIZE + local_i + 1
+        profile = utils.escape(task["profile"])
+        gamer = task.get("gamer")
+        if gamer and gamer.get("username"):
+            username_str = utils.escape(f"@{gamer['username']}")
+        else:
+            username_str = "_неизвестен_"
+        icon = "🚨" if task["status"] == "escalated" else "⏳"
+        lines.append(f"{n}\\. {icon} `{profile}` — {username_str}")
+
+        oid = str(task["_id"])
+        gamer_tg_id = gamer.get("id") if gamer else None
+
+        row = []
+        if not viewer_is_superadmin:
+            row.append(types.InlineKeyboardButton(f"{n} 🔓", callback_data=f"release_pool:{oid}"))
+            row.append(types.InlineKeyboardButton(f"{n} 🚫", callback_data=f"release_finish:{oid}"))
+            if task["status"] == "pending_release":
+                row.append(types.InlineKeyboardButton(f"{n} ↩️", callback_data=f"release_deny:{oid}"))
+        if gamer_tg_id:
+            row.append(types.InlineKeyboardButton("💬 DM", url=f"tg://user?id={gamer_tg_id}"))
+        if row:
+            markup.add(*row)
+
+    # Navigation row
+    nav = []
+    if page > 0:
+        nav.append(types.InlineKeyboardButton("◀️", callback_data=f"dash_page:{page - 1}"))
+    nav.append(types.InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="dash_noop"))
+    if page < total_pages - 1:
+        nav.append(types.InlineKeyboardButton("▶️", callback_data=f"dash_page:{page + 1}"))
+    nav.append(types.InlineKeyboardButton("🔄", callback_data=f"dash_page:{page}"))
+    markup.add(*nav)
+
+    return "\n".join(lines), markup
+
+
+async def _build_account_page(
+    accounts: list, gamer: dict, page: int, config: dict,
+    referral: str, referral_count: int, season_points
+) -> tuple:
+    """
+    Returns (text: str, markup: InlineKeyboardMarkup) for one page of the account screen.
+    accounts must already be sorted by tower.points descending (caller sorts).
+    referral, referral_count, season_points are pre-computed by the caller.
+    """
+    total = len(accounts)
+    total_pages = max(1, (total + ACCOUNT_PAGE_SIZE - 1) // ACCOUNT_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    page_accounts = accounts[page * ACCOUNT_PAGE_SIZE:(page + 1) * ACCOUNT_PAGE_SIZE]
+
+    has_address = gamer.get("address") is not None
+    address = utils.escape(gamer["address"]) if has_address else r"*добавь адрес кошелька для выплат*"
+
+    db_config = config or {}
+    support_handle = utils.escape(db_config.get("support_handle", "@goldalfsupp"))
+
+    header = texts.gamer_account_page_header.format(
+        referral=referral,
+        referral_count=referral_count,
+        address=address,
+        balance=season_points,
+        support_handle=support_handle,
+        page_num=page + 1,
+        total_pages=total_pages,
+    )
+
+    STATUS_EMOJI = {
+        "active": "✅", "escalated": "🚨", "released": "🔓",
+        "inactive": "⛔", "pending_release": "⏳", "finished": "🏁"
+    }
+
+    account_blocks = []
+    for account in page_accounts:
+        history = account.get("progress_history", [])
+        last_delta = history[-1]["delta"] if history else 0
+        emoji = STATUS_EMOJI.get(account.get("status", "active"), "✅")
+        profile = utils.escape(account["profile"])
+        pts = utils.escape(str(account["tower"]["points"]))
+        delta_str = utils.escape(str(last_delta))
+        rank = utils.escape(str(account["tower"]["rank"]))
+        floor_val = utils.escape(str(account["tower"]["floor"]))
+        login = utils.escape(account["login"])
+        password = utils.escape(account["password"])
+        proxy = account.get("proxy", {})
+        p_host = utils.escape(proxy.get("host", ""))
+        p_port = utils.escape(str(proxy.get("port", "")))
+        p_login = utils.escape(proxy.get("login", ""))
+        p_pass = utils.escape(proxy.get("password", ""))
+
+        block = (
+            f"{emoji} *{profile}* \\| {pts}pt \\(\\+{delta_str}\\) "
+            f"\\| Rank {rank} \\| Floor {floor_val}\n"
+            f"`{login}` / `{password}`\n\n"
+            f"Proxy:\n"
+            f"    Host: `{p_host}`\n"
+            f"    Port: `{p_port}`\n"
+            f"    Login: `{p_login}`\n"
+            f"    Password: `{p_pass}`"
+        )
+        account_blocks.append(block)
+
+    text = header + "\n\n".join(account_blocks)
+
+    # Inline nav keyboard
+    markup = types.InlineKeyboardMarkup(row_width=4)
+    nav = []
+    if page > 0:
+        nav.append(types.InlineKeyboardButton("◀️", callback_data=f"account_page:{page - 1}"))
+    nav.append(types.InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="account_page_noop"))
+    if page < total_pages - 1:
+        nav.append(types.InlineKeyboardButton("▶️", callback_data=f"account_page:{page + 1}"))
+    nav.append(types.InlineKeyboardButton("🔄", callback_data=f"account_page:{page}"))
+    markup.add(*nav)
+
+    return text, markup
+
+
+def _build_release_page(releasable: list, page: int) -> types.InlineKeyboardMarkup:
+    """
+    Returns an InlineKeyboardMarkup for one page of the release-account selector.
+    releasable must already be filtered to status==active accounts.
+    """
+    total = len(releasable)
+    total_pages = max(1, (total + RELEASE_PAGE_SIZE - 1) // RELEASE_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    page_accounts = releasable[page * RELEASE_PAGE_SIZE:(page + 1) * RELEASE_PAGE_SIZE]
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for account in page_accounts:
+        history = account.get("progress_history", [])
+        last_delta = history[-1]["delta"] if history else 0
+        label = f"{account['profile']}  (башня: {account['tower']['points']}, +{last_delta} за синк)"
+        markup.add(types.InlineKeyboardButton(label, callback_data=f"release_select:{account['_id']}"))
+
+    # Nav row (only show if more than one page)
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(types.InlineKeyboardButton("◀️", callback_data=f"release_page:{page - 1}"))
+        nav.append(types.InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="release_page_noop"))
+        if page < total_pages - 1:
+            nav.append(types.InlineKeyboardButton("▶️", callback_data=f"release_page:{page + 1}"))
+        markup.add(*nav)
+
+    markup.add(types.InlineKeyboardButton(buttons.back, callback_data="release_back"))
+    return markup
+
+
 # =============================================================================
 # /start and universal back/cancel — role resolution entry point
 # =============================================================================
@@ -108,14 +279,36 @@ asyncio.run_coroutine_threadsafe(init(), dp.loop)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.account)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.referral)
 @dp.message_handler(Text(equals=buttons.back), state=TelegramState.gamer_release_account)
+@dp.message_handler(Text(equals=buttons.back), state=TelegramState.support_dashboard)
 async def start(message: types.Message, state: FSMContext):
-    if await db.is_superadmin(message.from_user.id):
+    # --- Community membership gate (Sprint C) ---
+    db_config = await db.get_config()
+    required_chat_id = db_config.get("required_chat_id") if db_config else None
+    if required_chat_id:
+        try:
+            member = await bot.get_chat_member(required_chat_id, message.from_user.id)
+            if member.status in ("left", "kicked", "banned"):
+                await safe_wrap(lambda: message.answer(texts.gamer_not_in_chat, parse_mode="MarkdownV2"))
+                return
+        except Exception:
+            pass  # fail open — don't block on API errors
+
+    uid = message.from_user.id
+    is_sa, is_sup, is_gm = await asyncio.gather(
+        db.is_superadmin(uid),
+        db.is_support(uid),
+        db.is_gamer({"id": uid}),
+    )
+
+    if is_sa:
         print("is_superadmin")
         await TelegramState.superadmin_start.set()
+        await utils.clean_messages(bot, db, message.from_user.id)
         await utils.safe_wrap(lambda: message.answer(texts.superadmin_start, reply_markup=markups.superadmin_start))
-    elif await db.is_support(message.from_user.id):
+    elif is_sup:
         print("is_support")
         await TelegramState.support_start.set()
+        await utils.clean_messages(bot, db, message.from_user.id)
         await utils.safe_wrap(lambda: message.answer(texts.support_start_text, reply_markup=markups.support_start, parse_mode="MarkdownV2"))
     else:
         data = await state.get_data()
@@ -123,7 +316,7 @@ async def start(message: types.Message, state: FSMContext):
         has_username = bool(message.from_user.username)
         newcomer = None
 
-        if await db.is_gamer({ "id": message.from_user.id }):
+        if is_gm:
             available = True
             if message.from_user.username and not await db.is_gamer({ "username": message.from_user.username }):
                 await db.update_gamer({ "id": message.from_user.id }, { "username": message.from_user.username})
@@ -222,7 +415,14 @@ async def superadmin_edit_value_configuration(message: types.Message, state: FSM
     data = await state.get_data()
     field = data["field"]
 
-    if message.text.lower() in ["true", "false"] if field == "validation_live" else message.text.isdigit():
+    def _is_valid_int(s: str) -> bool:
+        try:
+            int(s)
+            return True
+        except ValueError:
+            return False
+
+    if message.text.lower() in ["true", "false"] if field == "validation_live" else _is_valid_int(message.text):
         value = message.text.lower() == "true" if field == "validation_live" else int(message.text)
         await db.update_config(field, value)
         await state.reset_data()
@@ -449,75 +649,116 @@ async def gamer_invite_link(message: types.Message):
 async def gamer_account(message: types.Message, state: FSMContext):
     gamer = await db.get_gamer(message.from_user.id)
     if not gamer:
-        await utils.safe_wrap(lambda: message.answer(
+        await safe_wrap(lambda: message.answer(
             texts.gamer_start, reply_markup=markups.start,
             parse_mode="MarkdownV2", disable_web_page_preview=True
         ))
         return
 
-    if "referral" in gamer and gamer["referral"]:
+    if gamer.get("referral"):
         referral_gamer = await db.get_gamer(gamer["referral"])
-        referral = ("@" + referral_gamer["username"]) if referral_gamer is not None else "Админ"
+        referral = utils.escape(("@" + referral_gamer["username"]) if referral_gamer else "Админ")
     else:
         referral = "Нет"
 
-    referral_count = await db.count_gamers({ "referral": message.from_user.id })
-
-    # Season 3 points
+    referral_count = await db.count_gamers({"referral": message.from_user.id})
     season_points = await db.get_gamer_season_points(gamer["_id"])
-
-    balance = 'Залетай играть 😉'
-    accounts_table = ''
-
-    has_address = "address" in gamer and gamer["address"] is not None
-    address = gamer["address"] if has_address else "*добавь адрес кошелька для выплат*"
-    markup = markups.backaddresschange if has_address else markups.backaddressadd
 
     accounts = await db.get_gamer_accounts(gamer["_id"])
     accounts.sort(key=lambda a: a.get("tower", {}).get("points", 0), reverse=True)
 
     db_config = await db.get_config()
-    support_handle = db_config.get("support_handle", "@goldalfsupp") if db_config else "@goldalfsupp"
-
-    if len(accounts) > 0:
-        balance = season_points
-
-        for account in accounts:
-            history = account.get("progress_history", [])
-            last_delta = history[-1]["delta"] if history else 0
-            status_emoji = {"active": "✅", "escalated": "🚨", "released": "🔓", "inactive": "⛔", "pending_release": "⏳"}.get(account.get("status", "active"), "✅")
-            accounts_table += f'''\n{utils.escape('---------------------------')}\n
-{status_emoji} *{utils.escape(account["profile"])}*
-Tower Points: {account["tower"]["points"]} \\(\\+{last_delta} за последний синк\\)
-Tower Rank: {account["tower"]["rank"]} \\| Floor: {account["tower"]["floor"]}
-
-Account:
-    Login: `{utils.escape(account["login"])}`
-    Password: `{utils.escape(account["password"])}`
-
-Proxy:
-    Host: `{utils.escape(account["proxy"].get("host", ""))}`
-    Port: `{account["proxy"].get("port", "")}`
-    Login: `{utils.escape(account["proxy"].get("login", ""))}`
-    Password: `{utils.escape(account["proxy"].get("password", ""))}`\n'''
+    has_address = gamer.get("address") is not None
+    markup = markups.backaddresschange if has_address else markups.backaddressadd
 
     await TelegramState.account.set()
-    sent_message = await utils.safe_wrap(lambda: message.answer(
-        texts.gamer_account.format(
+    await utils.add_message_history(db, message)
+    await utils.clean_messages(bot, db, message.from_user.id)
+
+    if not accounts:
+        # No accounts — show simple info card using the original template
+        address = utils.escape(gamer["address"]) if has_address else "*добавь адрес кошелька для выплат*"
+        support_handle = utils.escape((db_config or {}).get("support_handle", "@goldalfsupp"))
+        text = texts.gamer_account.format(
             address=address,
-            referral=utils.escape(referral),
+            referral=referral,
             referral_count=referral_count,
-            balance=balance,
-            accounts_table=accounts_table,
-            support_handle=utils.escape(support_handle)
-        ),
+            balance=season_points if season_points else "Залетай играть 😉",
+            accounts_table="",
+            support_handle=support_handle
+        )
+        sent = await safe_wrap(lambda: message.answer(text, reply_markup=markup, parse_mode="MarkdownV2"))
+        if sent:
+            await utils.add_message_history(db, sent)
+        return
+
+    # Has accounts — send reply keyboard first, then paginated inline message
+    sent_nav = await safe_wrap(lambda: message.answer("📋", reply_markup=markup))
+    if sent_nav:
+        await utils.add_message_history(db, sent_nav)
+
+    text, inline_markup = await _build_account_page(
+        accounts, gamer, 0, db_config or {},
+        referral=referral, referral_count=referral_count, season_points=season_points
+    )
+    sent = await safe_wrap(lambda: message.answer(text, reply_markup=inline_markup, parse_mode="MarkdownV2"))
+    if sent:
+        await utils.add_message_history(db, sent)
+        await state.update_data({"account_page": 0})
+
+@dp.callback_query_handler(
+    lambda c: c.data and (c.data.startswith("account_page:") or c.data == "account_page_noop"),
+    state=TelegramState.account
+)
+async def account_page_nav(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer("")  # MUST be first
+
+    if callback_query.data == "account_page_noop":
+        return
+
+    page = int(callback_query.data.split(":", 1)[1])
+
+    gamer = await db.get_gamer(callback_query.from_user.id)
+    if not gamer:
+        return
+
+    if gamer.get("referral"):
+        referral_gamer = await db.get_gamer(gamer["referral"])
+        referral = utils.escape(("@" + referral_gamer["username"]) if referral_gamer else "Админ")
+    else:
+        referral = "Нет"
+
+    referral_count = await db.count_gamers({"referral": callback_query.from_user.id})
+    season_points = await db.get_gamer_season_points(gamer["_id"])
+
+    accounts = await db.get_gamer_accounts(gamer["_id"])
+    accounts.sort(key=lambda a: a.get("tower", {}).get("points", 0), reverse=True)
+
+    db_config = await db.get_config()
+
+    if not accounts:
+        await safe_wrap(lambda: bot.edit_message_text(
+            "Нет аккаунтов",
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            reply_markup=types.InlineKeyboardMarkup()
+        ))
+        return
+
+    text, markup = await _build_account_page(
+        accounts, gamer, page, db_config or {},
+        referral=referral, referral_count=referral_count, season_points=season_points
+    )
+
+    await safe_wrap(lambda: bot.edit_message_text(
+        text,
+        chat_id=callback_query.message.chat.id,
+        message_id=callback_query.message.message_id,
         reply_markup=markup,
         parse_mode="MarkdownV2"
     ))
+    await state.update_data({"account_page": page})
 
-    await utils.add_message_history(db, message)
-    await utils.clean_messages(bot, db, message.from_user.id)
-    await utils.add_message_history(db, sent_message)
 
 @dp.message_handler(Text(equals=buttons.add_address), state=TelegramState.account)
 async def gamer_add_address(message: types.Message, state: FSMContext):
@@ -611,14 +852,12 @@ async def gamer_release_account_prompt(message: types.Message, state: FSMContext
     if not gamer:
         return
     accounts = await db.get_gamer_accounts(gamer["_id"])
-
-    # Only offer accounts that are strictly active (not already escalated/pending)
     releasable = [a for a in accounts if a.get("status") == "active"]
 
     await utils.add_message_history(db, message)
 
     if not releasable:
-        sent = await utils.safe_wrap(lambda: message.answer(
+        sent = await safe_wrap(lambda: message.answer(
             texts.gamer_release_account_no_accounts,
             reply_markup=markups.start, parse_mode="MarkdownV2"
         ))
@@ -626,21 +865,51 @@ async def gamer_release_account_prompt(message: types.Message, state: FSMContext
         await utils.add_message_history(db, sent)
         return
 
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for account in releasable:
-        history = account.get("progress_history", [])
-        last_delta = history[-1]["delta"] if history else 0
-        label = f"{account['profile']}  (башня: {account['tower']['points']}, +{last_delta} за синк)"
-        # Use _id hex (24 chars) — profile names can exceed Telegram's 64-byte callback_data limit
-        markup.add(types.InlineKeyboardButton(label, callback_data=f"release_select:{account['_id']}"))
-    markup.add(types.InlineKeyboardButton(buttons.back, callback_data="release_back"))
+    markup = _build_release_page(releasable, page=0)
 
     await TelegramState.gamer_release_account.set()
-    sent = await utils.safe_wrap(lambda: message.answer(
+    sent = await safe_wrap(lambda: message.answer(
         texts.gamer_release_account_prompt, reply_markup=markup, parse_mode="MarkdownV2"
     ))
     await utils.clean_messages(bot, db, message.from_user.id)
     await utils.add_message_history(db, sent)
+
+
+@dp.callback_query_handler(
+    lambda c: c.data and (c.data.startswith("release_page:") or c.data == "release_page_noop"),
+    state=TelegramState.gamer_release_account
+)
+async def release_page_nav(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer("")  # MUST be first
+
+    if callback_query.data == "release_page_noop":
+        return
+
+    page = int(callback_query.data.split(":", 1)[1])
+
+    gamer = await db.get_gamer(callback_query.from_user.id)
+    if not gamer:
+        return
+
+    accounts = await db.get_gamer_accounts(gamer["_id"])
+    releasable = [a for a in accounts if a.get("status") == "active"]
+
+    if not releasable:
+        await safe_wrap(lambda: bot.edit_message_text(
+            texts.gamer_release_account_no_accounts,
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            reply_markup=types.InlineKeyboardMarkup(),
+            parse_mode="MarkdownV2"
+        ))
+        return
+
+    markup = _build_release_page(releasable, page=page)
+    await safe_wrap(lambda: bot.edit_message_reply_markup(
+        chat_id=callback_query.message.chat.id,
+        message_id=callback_query.message.message_id,
+        reply_markup=markup
+    ))
 
 
 @dp.callback_query_handler(lambda c: c.data and (c.data.startswith("release_select:") or c.data == "release_back"), state=TelegramState.gamer_release_account)
@@ -708,6 +977,9 @@ async def gamer_release_account_select(callback_query: types.CallbackQuery, stat
         types.InlineKeyboardButton(buttons.release_finish, callback_data=f"release_finish:{account_oid_str}"),
         types.InlineKeyboardButton(buttons.release_deny,   callback_data=f"release_deny:{account_oid_str}"),
     )
+    gamer_tg_id_for_dm = gamer.get("id") if gamer else None
+    if gamer_tg_id_for_dm:
+        support_markup.add(types.InlineKeyboardButton("💬 DM", url=f"tg://user?id={gamer_tg_id_for_dm}"))
 
     support_users = await db.get_support_users()
     for su in support_users:
@@ -844,6 +1116,76 @@ async def show_finished_accounts(message: types.Message, state: FSMContext):
         text, reply_markup=home_markup, parse_mode="MarkdownV2"
     ))
     await utils.add_message_history(db, sent)
+
+
+@dp.message_handler(Text(equals=buttons.support_tasks), state=TelegramState.support_start)
+@dp.message_handler(Text(equals=buttons.support_tasks), state=TelegramState.superadmin_start)
+async def support_dashboard_open(message: types.Message, state: FSMContext):
+    viewer_is_superadmin = await db.is_superadmin(message.from_user.id)
+    tasks = await db.get_open_support_tasks()
+
+    await utils.add_message_history(db, message)
+    await utils.clean_messages(bot, db, message.from_user.id)
+
+    await TelegramState.support_dashboard.set()
+
+    # Show back reply keyboard so user can exit dashboard
+    sent_nav = await safe_wrap(lambda: message.answer("📋", reply_markup=markups.back))
+    if sent_nav:
+        await utils.add_message_history(db, sent_nav)
+
+    if not tasks:
+        sent = await safe_wrap(lambda: message.answer(
+            texts.support_dashboard_empty,
+            parse_mode="MarkdownV2"
+        ))
+        if sent:
+            await utils.add_message_history(db, sent)
+        return
+
+    text, inline_markup = await _build_dashboard_page(
+        tasks, page=0, viewer_is_superadmin=viewer_is_superadmin
+    )
+    sent = await safe_wrap(lambda: message.answer(
+        text, reply_markup=inline_markup, parse_mode="MarkdownV2"
+    ))
+    if sent:
+        await utils.add_message_history(db, sent)
+        await state.update_data({"dashboard_message_id": sent.message_id})
+
+
+@dp.callback_query_handler(
+    lambda c: c.data and (c.data.startswith("dash_page:") or c.data == "dash_noop"),
+    state=TelegramState.support_dashboard
+)
+async def dashboard_paginate(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.answer("")
+
+    if callback_query.data == "dash_noop":
+        return
+
+    page = int(callback_query.data.split(":", 1)[1])
+    viewer_is_superadmin = await db.is_superadmin(callback_query.from_user.id)
+    tasks = await db.get_open_support_tasks()
+
+    if not tasks:
+        await safe_wrap(lambda: bot.edit_message_text(
+            texts.support_dashboard_empty,
+            chat_id=callback_query.message.chat.id,
+            message_id=callback_query.message.message_id,
+            reply_markup=types.InlineKeyboardMarkup(),
+            parse_mode="MarkdownV2"
+        ))
+        return
+
+    text, markup = await _build_dashboard_page(tasks, page=page, viewer_is_superadmin=viewer_is_superadmin)
+    await safe_wrap(lambda: bot.edit_message_text(
+        text,
+        chat_id=callback_query.message.chat.id,
+        message_id=callback_query.message.message_id,
+        reply_markup=markup,
+        parse_mode="MarkdownV2"
+    ))
 
 
 @dp.message_handler(Text(equals=buttons.support_invite_link, ignore_case=True),
