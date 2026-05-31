@@ -29,10 +29,15 @@ for _mod in ["apiclient", "apiclient.discovery"]:
 for _mod in ["cryptoaddress"]:
     sys.modules.setdefault(_mod, MagicMock())
 
-# Suppress the init() coroutine at import time (called via run_coroutine_threadsafe)
+# Suppress the init() coroutine at import time (called via run_coroutine_threadsafe).
+# Close the coroutine immediately so Python doesn't warn about it never being awaited.
 import asyncio as _asyncio
 if not getattr(_asyncio, "_test_rcts_patched", False):
-    _asyncio.run_coroutine_threadsafe = lambda *a, **k: MagicMock()
+    def _mock_run_coroutine_threadsafe(coro, *args, **kwargs):
+        if hasattr(coro, "close"):
+            coro.close()
+        return MagicMock()
+    _asyncio.run_coroutine_threadsafe = _mock_run_coroutine_threadsafe
     _asyncio._test_rcts_patched = True
 
 

@@ -32,6 +32,11 @@ def _ts():
     return _TelegramStateMock()
 
 
+async def _fake_safe_wrap(fn):
+    """Async safe_wrap spy — properly awaits the inner coroutine."""
+    return await fn()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -90,7 +95,7 @@ async def test_gate_blocks_non_member(blocked_status):
 
     with patch.object(main, "db", mock_db), \
          patch.object(main, "bot") as mock_bot, \
-         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=lambda fn: fn())), \
+         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=_fake_safe_wrap)), \
          patch("utils.add_message_history", AsyncMock()), \
          patch("utils.clean_messages", AsyncMock()):
         mock_bot.get_chat_member = AsyncMock(return_value=chat_member)
@@ -124,7 +129,7 @@ async def test_gate_allows_member(allowed_status):
     with patch.object(main, "db", mock_db), \
          patch.object(main, "bot") as mock_bot, \
          patch.object(main, "TelegramState", _ts()), \
-         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=lambda fn: fn())), \
+         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=_fake_safe_wrap)), \
          patch("utils.add_message_history", AsyncMock()), \
          patch("utils.clean_messages", AsyncMock()):
         mock_bot.get_chat_member = AsyncMock(return_value=chat_member)
@@ -157,7 +162,7 @@ async def test_gate_fails_open_on_api_error():
     with patch.object(main, "db", mock_db), \
          patch.object(main, "bot") as mock_bot, \
          patch.object(main, "TelegramState", _ts()), \
-         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=lambda fn: fn())), \
+         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=_fake_safe_wrap)), \
          patch("utils.add_message_history", AsyncMock()), \
          patch("utils.clean_messages", AsyncMock()):
         mock_bot.get_chat_member = AsyncMock(side_effect=Exception("Telegram API error"))
@@ -184,7 +189,7 @@ async def test_gate_disabled_when_no_required_chat_id():
     with patch.object(main, "db", mock_db), \
          patch.object(main, "bot") as mock_bot, \
          patch.object(main, "TelegramState", _ts()), \
-         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=lambda fn: fn())), \
+         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=_fake_safe_wrap)), \
          patch("utils.add_message_history", AsyncMock()), \
          patch("utils.clean_messages", AsyncMock()):
         mock_bot.get_chat_member = AsyncMock()
@@ -212,7 +217,7 @@ async def test_gate_disabled_when_config_missing():
     with patch.object(main, "db", mock_db), \
          patch.object(main, "bot") as mock_bot, \
          patch.object(main, "TelegramState", _ts()), \
-         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=lambda fn: fn())), \
+         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=_fake_safe_wrap)), \
          patch("utils.add_message_history", AsyncMock()), \
          patch("utils.clean_messages", AsyncMock()):
         mock_bot.get_chat_member = AsyncMock()
@@ -243,7 +248,7 @@ async def test_config_editor_accepts_negative_integer():
 
     with patch.object(main, "db", mock_db), \
          patch.object(main, "TelegramState", _ts()), \
-         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=lambda fn: fn())):
+         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=_fake_safe_wrap)):
         await main.superadmin_edit_value_configuration(message, state)
 
     mock_db.update_config.assert_called_once_with("required_chat_id", -100123456789)
@@ -267,7 +272,7 @@ async def test_config_editor_accepts_positive_integer():
 
     with patch.object(main, "db", mock_db), \
          patch.object(main, "TelegramState", _ts()), \
-         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=lambda fn: fn())):
+         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=_fake_safe_wrap)):
         await main.superadmin_edit_value_configuration(message, state)
 
     mock_db.update_config.assert_called_once_with("max_accounts_per_gamer", 42)
@@ -289,7 +294,7 @@ async def test_config_editor_rejects_double_minus():
     state.get_data = AsyncMock(return_value={"field": "required_chat_id"})
 
     with patch.object(main, "db", mock_db), \
-         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=lambda fn: fn())):
+         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=_fake_safe_wrap)):
         await main.superadmin_edit_value_configuration(message, state)
 
     mock_db.update_config.assert_not_called()
@@ -311,7 +316,7 @@ async def test_config_editor_rejects_non_numeric():
     state.get_data = AsyncMock(return_value={"field": "required_chat_id"})
 
     with patch.object(main, "db", mock_db), \
-         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=lambda fn: fn())):
+         patch.object(main, "safe_wrap", new=AsyncMock(side_effect=_fake_safe_wrap)):
         await main.superadmin_edit_value_configuration(message, state)
 
     mock_db.update_config.assert_not_called()

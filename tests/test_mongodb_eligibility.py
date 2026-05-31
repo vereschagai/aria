@@ -205,3 +205,99 @@ async def test_gamer_ban_blocks_pickup():
 
     assert eligible is False
     assert "освободили" in reason
+
+
+@pytest.mark.asyncio
+async def test_zero_accounts_eligible():
+    """Case 9: gamer has no accounts at all → eligible (no slots used, no progress to check)."""
+    gamer_oid = ObjectId()
+    mongo = _make_mongo_db([], gamer_doc=None)
+
+    config = {"max_accounts_per_gamer": 10, "min_progress_points": 50}
+    eligible, reason = await mongo.check_assignment_eligibility(gamer_oid, config)
+
+    assert eligible is True
+    assert reason == "ok"
+
+
+@pytest.mark.asyncio
+async def test_pool_release_count_4_eligible():
+    """Case 10: pool_release_count=4 (one below ban threshold of 5) → still eligible."""
+    gamer_oid = ObjectId()
+    accounts = [_active_account("acc1", delta=200, gamer_oid=gamer_oid)]
+    gamer_doc = {"_id": gamer_oid, "pool_release_count": 4}
+    mongo = _make_mongo_db(accounts, gamer_doc=gamer_doc)
+
+    config = {"max_accounts_per_gamer": 10, "min_progress_points": 50}
+    eligible, reason = await mongo.check_assignment_eligibility(gamer_oid, config)
+
+    assert eligible is True
+
+
+@pytest.mark.asyncio
+async def test_gamer_not_in_db_eligible():
+    """Case 11: gamers.find_one returns None (gamer not in DB) → no ban, eligible."""
+    gamer_oid = ObjectId()
+    accounts = [_active_account("acc1", delta=200, gamer_oid=gamer_oid)]
+    # gamer_doc=None → find_one returns None
+    mongo = _make_mongo_db(accounts, gamer_doc=None)
+
+    config = {"max_accounts_per_gamer": 10, "min_progress_points": 50}
+    eligible, reason = await mongo.check_assignment_eligibility(gamer_oid, config)
+
+    assert eligible is True
+
+
+@pytest.mark.asyncio
+async def test_delta_exactly_at_min_eligible():
+    """Case 12: delta == min_progress_points (boundary) → eligible."""
+    gamer_oid = ObjectId()
+    accounts = [_active_account("acc1", delta=50, gamer_oid=gamer_oid)]
+    mongo = _make_mongo_db(accounts, gamer_doc=None)
+
+    config = {"max_accounts_per_gamer": 10, "min_progress_points": 50}
+    eligible, reason = await mongo.check_assignment_eligibility(gamer_oid, config)
+
+    assert eligible is True
+
+
+@pytest.mark.asyncio
+async def test_delta_one_below_min_ineligible():
+    """Case 13: delta == min_progress_points - 1 (boundary) → ineligible."""
+    gamer_oid = ObjectId()
+    accounts = [_active_account("acc1", delta=49, gamer_oid=gamer_oid)]
+    mongo = _make_mongo_db(accounts, gamer_doc=None)
+
+    config = {"max_accounts_per_gamer": 10, "min_progress_points": 50}
+    eligible, reason = await mongo.check_assignment_eligibility(gamer_oid, config)
+
+    assert eligible is False
+    assert "acc1" in reason
+
+
+@pytest.mark.asyncio
+async def test_multiple_active_accounts_all_good_eligible():
+    """Case 14: 5 active accounts, all with delta >= min → eligible."""
+    gamer_oid = ObjectId()
+    accounts = [_active_account(f"acc{i}", delta=100, gamer_oid=gamer_oid) for i in range(5)]
+    mongo = _make_mongo_db(accounts, gamer_doc=None)
+
+    config = {"max_accounts_per_gamer": 10, "min_progress_points": 50}
+    eligible, reason = await mongo.check_assignment_eligibility(gamer_oid, config)
+
+    assert eligible is True
+
+
+@pytest.mark.asyncio
+async def test_first_account_good_second_bad_ineligible():
+    """Case 15: first account has good progress, second has bad → ineligible, second reported."""
+    gamer_oid = ObjectId()
+    good = _active_account("good_acc", delta=200, gamer_oid=gamer_oid)
+    bad = _active_account("bad_acc", delta=5, gamer_oid=gamer_oid)
+    mongo = _make_mongo_db([good, bad], gamer_doc=None)
+
+    config = {"max_accounts_per_gamer": 10, "min_progress_points": 50}
+    eligible, reason = await mongo.check_assignment_eligibility(gamer_oid, config)
+
+    assert eligible is False
+    assert "bad_acc" in reason

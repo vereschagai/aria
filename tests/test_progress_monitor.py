@@ -284,3 +284,155 @@ async def test_escalate_day_5_custom_threshold(mock_db, mock_bot):
             await pm.check_all()
             mock_escalate.assert_called_once_with(acc)
             mock_warn.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_baseline_from_ownership_history(mock_db, mock_bot, base_config):
+    """Case 11: no last_progress_at → ownership_history[-1].assigned_at used as baseline."""
+    import utils as _utils_mod
+    with patch.object(_utils_mod, "safe_wrap", side_effect=_simple_safe_wrap):
+        from progress_monitor import ProgressMonitor
+
+        gamer_oid = ObjectId()
+        acc = _account(days_inactive=0, gamer_id=gamer_oid,
+                       has_last_progress=False, has_ownership_history=True)
+        # Override ownership_history assigned_at to 2 days ago
+        from datetime import timedelta
+        acc["ownership_history"][0]["assigned_at"] = datetime.now() - timedelta(days=2)
+
+        mock_db.get_config = AsyncMock(return_value=base_config)
+        mock_db.get_active_assigned_accounts = AsyncMock(return_value=[acc])
+
+        pm = ProgressMonitor(mock_bot, mock_db)
+        with patch.object(pm, "_warn_gamer", new=AsyncMock()) as mock_warn, \
+             patch.object(pm, "_escalate", new=AsyncMock()) as mock_escalate:
+            await pm.check_all()
+            # 2 days inactive (< 3), so warn not escalate
+            mock_warn.assert_called_once()
+            mock_escalate.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Direct _warn_gamer unit tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_warn_gamer_gamer_not_found_silent(mock_db, mock_bot):
+    """_warn_gamer: get_gamer_by_id returns None → no send_message, no error."""
+    import utils as _utils_mod
+    with patch.object(_utils_mod, "safe_wrap", side_effect=_simple_safe_wrap):
+        from progress_monitor import ProgressMonitor
+
+        mock_db.get_gamer_by_id = AsyncMock(return_value=None)
+        pm = ProgressMonitor(mock_bot, mock_db)
+        account = {"profile": "Acc", "gamer_id": ObjectId()}
+
+        await pm._warn_gamer(account, days_inactive=1)
+
+        mock_bot.send_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_warn_gamer_sends_to_correct_telegram_id(mock_db, mock_bot):
+    """_warn_gamer: gamer found → send_message called with gamer's Telegram id."""
+    import utils as _utils_mod
+    with patch.object(_utils_mod, "safe_wrap", side_effect=_simple_safe_wrap):
+        from progress_monitor import ProgressMonitor
+
+        gamer_oid = ObjectId()
+        gamer = {"_id": gamer_oid, "id": 99999, "username": "player"}
+        mock_db.get_gamer_by_id = AsyncMock(return_value=gamer)
+        pm = ProgressMonitor(mock_bot, mock_db)
+        account = {"profile": "Acc", "gamer_id": gamer_oid}
+
+        await pm._warn_gamer(account, days_inactive=2)
+
+        mock_bot.send_message.assert_called_once()
+        assert mock_bot.send_message.call_args[0][0] == 99999
+
+
+# ---------------------------------------------------------------------------
+# Direct _escalate unit tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_escalate_no_support_users_still_marks_escalated(mock_db, mock_bot):
+    """_escalate: empty support list → set_account_status('escalated') still called."""
+    import utils as _utils_mod
+    with patch.object(_utils_mod, "safe_wrap", side_effect=_simple_safe_wrap):
+        from progress_monitor import ProgressMonitor
+
+        mock_db.get_gamer_by_id = AsyncMock(return_value=None)
+        mock_db.get_support_users = AsyncMock(return_value=[])
+        pm = ProgressMonitor(mock_bot, mock_db)
+        account = {
+            "_id": ObjectId(), "profile": "Acc",
+            "gamer_id": None, "status": "active",
+            "progress_history": [], "ownership_history": [],
+        }
+
+        await pm._escalate(account)
+
+        mock_db.set_account_status.assert_called_once()
+        assert mock_db.set_account_status.call_args[0][1] == "escalated"
+        mock_bot.send_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_escalate_sets_escalated_at_and_notified_day(mock_db, mock_bot):
+    """_escalate: extra_fields passed to set_account_status include escalated_at and last_notified_day."""
+    import utils as _utils_mod
+    with patch.object(_utils_mod, "safe_wrap", side_effect=_simple_safe_wrap):
+        from progress_monitor import ProgressMonitor
+
+        gamer_oid = ObjectId()
+        gamer = {"_id": gamer_oid, "id": 55555, "username": "player"}
+        mock_db.get_gamer_by_id = AsyncMock(return_value=gamer)
+        mock_db.get_support_users = AsyncMock(return_value=[{"id": 99}])
+        pm = ProgressMonitor(mock_bot, mock_db)
+        account = {
+            "_id": ObjectId(), "profile": "Acc",
+            "gamer_id": gamer_oid, "status": "active",
+            "progress_history": [], "ownership_history": [],
+        }
+
+        await pm._escalate(account)
+
+        mock_db.set_account_status.assert_called_once()
+        extra = mock_db.set_account_status.call_args[1].get("extra_fields") or \
+                mock_db.set_account_status.call_args[0][2]
+        assert "escalated_at" in extra
+        assert "last_notified_day" in extra
+
+
+@pytest.mark.asyncio
+async def test_escalate_support_failure_continues_to_next(mock_db, mock_bot):
+    """_escalate: first support user send fails → second support user still notified."""
+    import utils as _utils_mod
+
+    call_ids = []
+
+    async def _flaky_send(chat_id, text, **kwargs):
+        call_ids.append(chat_id)
+        if chat_id == 101:
+            raise Exception("Telegram error")
+        return MagicMock()
+
+    mock_bot.send_message = AsyncMock(side_effect=_flaky_send)
+
+    with patch.object(_utils_mod, "safe_wrap", side_effect=_simple_safe_wrap):
+        from progress_monitor import ProgressMonitor
+
+        mock_db.get_gamer_by_id = AsyncMock(return_value=None)
+        mock_db.get_support_users = AsyncMock(return_value=[{"id": 101}, {"id": 102}])
+        pm = ProgressMonitor(mock_bot, mock_db)
+        account = {
+            "_id": ObjectId(), "profile": "Acc",
+            "gamer_id": None, "status": "active",
+            "progress_history": [], "ownership_history": [],
+        }
+
+        await pm._escalate(account)
+
+    assert 101 in call_ids
+    assert 102 in call_ids
